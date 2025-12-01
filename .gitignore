@@ -1,1 +1,7 @@
 server/target
+server/*.db
+server/*-config.json
+test-data/
+test-web/
+web/node_modules/
+web/dist/

@@ -1,6 +1,8 @@
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useServerManager, formatBytes, formatSpeed, formatUptime } from '../hooks/useMetrics';
 import { getOsIcon, getProviderIcon } from '../components/Icons';
+import type { HistoryPoint, HistoryResponse } from '../types';
 
 const FLAGS: Record<string, string> = {
   'CN': '🇨🇳', 'HK': '🇭🇰', 'TW': '🇹🇼', 'JP': '🇯🇵', 'KR': '🇰🇷',
@@ -22,6 +24,172 @@ function StatCard({ label, value, subValue, color = 'gray' }: { label: string; v
       <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">{label}</div>
       <div className="text-xl font-bold text-white font-mono">{value}</div>
       {subValue && <div className="text-xs text-gray-500 mt-1">{subValue}</div>}
+    </div>
+  );
+}
+
+// History Chart Component
+type TimeRange = '1h' | '24h' | '7d' | '30d' | '1y';
+
+function HistoryChart({ serverId }: { serverId: string }) {
+  const [range, setRange] = useState<TimeRange>('24h');
+  const [data, setData] = useState<HistoryPoint[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchHistory = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/history/${serverId}?range=${range}`);
+        if (!res.ok) throw new Error('Failed to fetch history');
+        const json: HistoryResponse = await res.json();
+        setData(json.data);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Unknown error');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchHistory();
+  }, [serverId, range]);
+
+  const ranges: { value: TimeRange; label: string }[] = [
+    { value: '1h', label: '1H' },
+    { value: '24h', label: '24H' },
+    { value: '7d', label: '7D' },
+    { value: '30d', label: '30D' },
+    { value: '1y', label: '1Y' },
+  ];
+
+  // Get max values for scaling
+  const maxCpu = Math.max(...data.map(d => d.cpu), 100);
+  const maxMem = Math.max(...data.map(d => d.memory), 100);
+  const maxDisk = Math.max(...data.map(d => d.disk), 100);
+
+  // Sample data for display (max 60 points for smooth rendering)
+  const sampleRate = Math.max(1, Math.floor(data.length / 60));
+  const sampledData = data.filter((_, i) => i % sampleRate === 0);
+
+  const formatTime = (timestamp: string) => {
+    const date = new Date(timestamp);
+    if (range === '1h' || range === '24h') {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    if (range === '1y') {
+      return date.toLocaleDateString([], { month: 'short', year: '2-digit' });
+    }
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
+
+  return (
+    <div className="nezha-card p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+          History
+        </h2>
+        <div className="flex gap-1 p-1 bg-white/5 rounded-lg">
+          {ranges.map(r => (
+            <button
+              key={r.value}
+              onClick={() => setRange(r.value)}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                range === r.value
+                  ? 'bg-emerald-500 text-white'
+                  : 'text-gray-400 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="h-48 flex items-center justify-center">
+          <div className="w-8 h-8 border-2 border-white/20 border-t-emerald-500 rounded-full animate-spin" />
+        </div>
+      ) : error ? (
+        <div className="h-48 flex items-center justify-center text-gray-500 text-sm">
+          {error}
+        </div>
+      ) : data.length === 0 ? (
+        <div className="h-48 flex items-center justify-center text-gray-500 text-sm">
+          No historical data available for this period
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {/* CPU Chart */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-blue-400 font-medium">CPU Usage</span>
+              <span className="text-xs text-gray-500 font-mono">
+                avg: {(data.reduce((a, b) => a + b.cpu, 0) / data.length).toFixed(1)}%
+              </span>
+            </div>
+            <div className="h-16 flex items-end gap-px bg-white/[0.02] rounded-lg p-2 overflow-hidden">
+              {sampledData.map((point, i) => (
+                <div
+                  key={i}
+                  className="flex-1 min-w-[2px] bg-blue-500 rounded-t transition-all hover:bg-blue-400"
+                  style={{ height: `${(point.cpu / maxCpu) * 100}%` }}
+                  title={`${formatTime(point.timestamp)}: ${point.cpu.toFixed(1)}%`}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Memory Chart */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-purple-400 font-medium">Memory Usage</span>
+              <span className="text-xs text-gray-500 font-mono">
+                avg: {(data.reduce((a, b) => a + b.memory, 0) / data.length).toFixed(1)}%
+              </span>
+            </div>
+            <div className="h-16 flex items-end gap-px bg-white/[0.02] rounded-lg p-2 overflow-hidden">
+              {sampledData.map((point, i) => (
+                <div
+                  key={i}
+                  className="flex-1 min-w-[2px] bg-purple-500 rounded-t transition-all hover:bg-purple-400"
+                  style={{ height: `${(point.memory / maxMem) * 100}%` }}
+                  title={`${formatTime(point.timestamp)}: ${point.memory.toFixed(1)}%`}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Disk Chart */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-amber-400 font-medium">Disk Usage</span>
+              <span className="text-xs text-gray-500 font-mono">
+                avg: {(data.reduce((a, b) => a + b.disk, 0) / data.length).toFixed(1)}%
+              </span>
+            </div>
+            <div className="h-16 flex items-end gap-px bg-white/[0.02] rounded-lg p-2 overflow-hidden">
+              {sampledData.map((point, i) => (
+                <div
+                  key={i}
+                  className="flex-1 min-w-[2px] bg-amber-500 rounded-t transition-all hover:bg-amber-400"
+                  style={{ height: `${(point.disk / maxDisk) * 100}%` }}
+                  title={`${formatTime(point.timestamp)}: ${point.disk.toFixed(1)}%`}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Time labels */}
+          {sampledData.length > 0 && (
+            <div className="flex justify-between text-[10px] text-gray-600 font-mono px-2">
+              <span>{formatTime(sampledData[0].timestamp)}</span>
+              <span>{formatTime(sampledData[sampledData.length - 1].timestamp)}</span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -313,6 +481,11 @@ export default function ServerDetail() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* History Section - Full Width */}
+      <div className="mt-6">
+        <HistoryChart serverId={id!} />
       </div>
 
       {/* Footer */}

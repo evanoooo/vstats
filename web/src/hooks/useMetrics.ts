@@ -1,5 +1,5 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
-import type { SystemMetrics } from '../types';
+import { useEffect, useState, useRef } from 'react';
+import type { SystemMetrics, SiteSettings } from '../types';
 
 interface NetworkSpeed {
   rx_sec: number;
@@ -9,10 +9,9 @@ interface NetworkSpeed {
 export interface ServerConfig {
   id: string;
   name: string;
-  url: string;
-  type: 'real' | 'demo'; // 'real' connects to WebSocket, 'demo' generates fake data
-  location?: string;     // e.g., "US", "HK", "CN"
-  provider?: string;     // e.g., "AWS", "Aliyun", "Vultr"
+  type: 'real' | 'local';
+  location?: string;
+  provider?: string;
 }
 
 export interface ServerState {
@@ -23,163 +22,198 @@ export interface ServerState {
   error: string | null;
 }
 
-// Initial fake data for demo servers
-const createFakeMetrics = (_id: string, name: string): SystemMetrics => ({
-  timestamp: new Date().toISOString(),
-  hostname: name,
-  os: { name: 'Ubuntu', version: '22.04 LTS', kernel: '5.15.0', arch: 'x86_64' },
-  cpu: { brand: 'Virtual CPU', cores: 4, usage: Math.random() * 100, frequency: 2400, per_core: [] },
-  memory: { total: 8589934592, used: Math.random() * 8589934592, available: 0, swap_total: 0, swap_used: 0, usage_percent: Math.random() * 100 },
-  disks: [{ name: 'vda1', mount_point: '/', fs_type: 'ext4', total: 100000000000, used: Math.random() * 100000000000, available: 0, usage_percent: Math.random() * 100 }],
-  network: { interfaces: [], total_rx: Math.random() * 1000000000, total_tx: Math.random() * 1000000000 },
-  uptime: Math.floor(Math.random() * 1000000),
-  load_average: { one: Math.random() * 2, five: Math.random() * 2, fifteen: Math.random() * 2 }
-});
+// Message from dashboard WebSocket
+interface DashboardMessage {
+  type: string;
+  servers: ServerMetricsUpdate[];
+  site_settings?: SiteSettings;
+}
+
+interface ServerMetricsUpdate {
+  server_id: string;
+  server_name: string;
+  location: string;
+  provider: string;
+  online: boolean;
+  metrics: SystemMetrics | null;
+}
+
+const defaultSiteSettings: SiteSettings = {
+  site_name: 'xProb Dashboard',
+  site_description: 'Real-time Server Monitoring',
+  social_links: []
+};
 
 export function useServerManager() {
-  // Default server list including localhost and demos
-  const [servers, setServers] = useState<ServerState[]>([
-    {
-      config: { id: 'local', name: 'Local Dev', url: `ws://${window.location.host}/ws`, type: 'real', location: 'CN', provider: '' },
-      metrics: null,
-      speed: { rx_sec: 0, tx_sec: 0 },
-      isConnected: false,
-      error: null
-    },
-    {
-      config: { id: 'demo1', name: 'US-SJC-Vultr', url: '', type: 'demo', location: 'US', provider: 'Vultr' },
-      metrics: createFakeMetrics('demo1', 'US-SJC-Vultr'),
-      speed: { rx_sec: 1024 * 1024 * 1.5, tx_sec: 1024 * 1024 * 0.5 },
-      isConnected: true,
-      error: null
-    },
-    {
-      config: { id: 'demo2', name: 'HK-Aliyun', url: '', type: 'demo', location: 'HK', provider: 'Aliyun' },
-      metrics: createFakeMetrics('demo2', 'HK-Aliyun'),
-      speed: { rx_sec: 1024 * 500, tx_sec: 1024 * 200 },
-      isConnected: true,
-      error: null
-    },
-    {
-      config: { id: 'demo3', name: 'JP-TYO-AWS', url: '', type: 'demo', location: 'JP', provider: 'AWS' },
-      metrics: createFakeMetrics('demo3', 'JP-TYO-AWS'),
-      speed: { rx_sec: 1024 * 800, tx_sec: 1024 * 300 },
-      isConnected: true,
-      error: null
-    }
-  ]);
+  const [servers, setServers] = useState<ServerState[]>([]);
 
-  // Refs to store websocket instances and previous metrics for speed calculation
-  const wsRefs = useRef<Map<string, WebSocket>>(new Map());
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>(defaultSiteSettings);
+  
   const lastMetricsMap = useRef<Map<string, { metrics: SystemMetrics, time: number }>>(new Map());
+  const wsRef = useRef<WebSocket | null>(null);
 
-  // Function to update a specific server's state
-  const updateServerState = useCallback((id: string, updates: Partial<ServerState>) => {
-    setServers(prev => prev.map(s => s.config.id === id ? { ...s, ...updates } : s));
-  }, []);
-
-  // Handle Real Connections
+  // Connect to dashboard WebSocket
   useEffect(() => {
-    servers.forEach(server => {
-      if (server.config.type !== 'real') return;
-      if (wsRefs.current.has(server.config.id)) return; // Already connected
+    const connect = () => {
+      try {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws`;
 
-      const connect = () => {
-        try {
-          // Determine WebSocket URL
-          let wsUrl = server.config.url;
-          if (wsUrl.startsWith('/')) {
-             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-             wsUrl = `${protocol}//${window.location.host}${wsUrl}`;
-          }
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
 
-          const ws = new WebSocket(wsUrl);
-          wsRefs.current.set(server.config.id, ws);
+        ws.onopen = () => {
+          console.log('[Dashboard] WebSocket connected');
+        };
 
-          ws.onopen = () => {
-            updateServerState(server.config.id, { isConnected: true, error: null });
-          };
-
-          ws.onmessage = (event) => {
-            try {
-              const data = JSON.parse(event.data) as SystemMetrics;
-              const now = Date.now();
-              const last = lastMetricsMap.current.get(server.config.id);
-              
-              let newSpeed = { rx_sec: 0, tx_sec: 0 };
-
-              if (last) {
-                const timeDiff = (now - last.time) / 1000;
-                if (timeDiff > 0) {
-                  const rxDiff = data.network.total_rx - last.metrics.network.total_rx;
-                  const txDiff = data.network.total_tx - last.metrics.network.total_tx;
-                  newSpeed = {
-                    rx_sec: Math.max(0, rxDiff / timeDiff),
-                    tx_sec: Math.max(0, txDiff / timeDiff)
-                  };
-                }
-              }
-
-              lastMetricsMap.current.set(server.config.id, { metrics: data, time: now });
-              updateServerState(server.config.id, { metrics: data, speed: newSpeed });
-            } catch (e) {
-              console.error('Parse error', e);
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data) as DashboardMessage;
+            
+            // Update site settings if provided
+            if (data.site_settings) {
+              setSiteSettings(data.site_settings);
             }
-          };
+            
+            if (data.type === 'metrics' && data.servers) {
+              const now = Date.now();
+              
+              setServers(prev => {
+                // Keep local server if exists
+                const localServer = prev.find(s => s.config.type === 'local');
+                
+                const realServers: ServerState[] = data.servers.map(serverUpdate => {
+                  const existingServer = prev.find(s => s.config.id === serverUpdate.server_id);
+                  const lastData = lastMetricsMap.current.get(serverUpdate.server_id);
+                  
+                  let newSpeed = existingServer?.speed || { rx_sec: 0, tx_sec: 0 };
 
-          ws.onclose = () => {
-            updateServerState(server.config.id, { isConnected: false });
-            wsRefs.current.delete(server.config.id);
-            setTimeout(connect, 3000); // Reconnect
-          };
+                  if (lastData && serverUpdate.metrics) {
+                    const timeDiff = (now - lastData.time) / 1000;
+                    if (timeDiff > 0) {
+                      const rxDiff = serverUpdate.metrics.network.total_rx - lastData.metrics.network.total_rx;
+                      const txDiff = serverUpdate.metrics.network.total_tx - lastData.metrics.network.total_tx;
+                      newSpeed = {
+                        rx_sec: Math.max(0, rxDiff / timeDiff),
+                        tx_sec: Math.max(0, txDiff / timeDiff)
+                      };
+                    }
+                  }
 
-          ws.onerror = () => {
-            updateServerState(server.config.id, { error: 'Connection failed', isConnected: false });
-          };
-        } catch (e) {
-           console.error(e);
-        }
-      };
+                  if (serverUpdate.metrics) {
+                    lastMetricsMap.current.set(serverUpdate.server_id, { 
+                      metrics: serverUpdate.metrics, 
+                      time: now 
+                    });
+                  }
 
-      connect();
-    });
+                  return {
+                    config: {
+                      id: serverUpdate.server_id,
+                      name: serverUpdate.server_name,
+                      type: 'real' as const,
+                      location: serverUpdate.location,
+                      provider: serverUpdate.provider,
+                    },
+                    metrics: serverUpdate.metrics,
+                    speed: newSpeed,
+                    isConnected: serverUpdate.online,
+                    error: null
+                  };
+                });
 
-    // Cleanup
-    return () => {
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      wsRefs.current.forEach(ws => ws.close());
-    };
-  }, []); // Only run once on mount for now
-
-  // Simulate Demo Data Updates
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setServers(prev => prev.map(s => {
-        if (s.config.type !== 'demo' || !s.metrics) return s;
-        
-        // Fluctuate values slightly
-        const newCpu = Math.min(100, Math.max(0, s.metrics.cpu.usage + (Math.random() - 0.5) * 10));
-        const newMem = Math.min(100, Math.max(0, s.metrics.memory.usage_percent + (Math.random() - 0.5) * 5));
-        
-        return {
-          ...s,
-          metrics: {
-            ...s.metrics,
-            cpu: { ...s.metrics.cpu, usage: newCpu },
-            memory: { ...s.metrics.memory, usage_percent: newMem }
-          },
-          speed: {
-            rx_sec: Math.max(0, s.speed.rx_sec + (Math.random() - 0.5) * 1024 * 100),
-            tx_sec: Math.max(0, s.speed.tx_sec + (Math.random() - 0.5) * 1024 * 50),
+                // Put local server first if exists
+                return localServer ? [localServer, ...realServers] : realServers;
+              });
+            }
+          } catch (e) {
+            console.error('[Dashboard] Parse error', e);
           }
         };
-      }));
-    }, 1000);
 
+        ws.onclose = () => {
+          console.log('[Dashboard] WebSocket disconnected, reconnecting...');
+          wsRef.current = null;
+          setTimeout(connect, 3000);
+        };
+
+        ws.onerror = (err) => {
+          console.error('[Dashboard] WebSocket error', err);
+        };
+      } catch (e) {
+        console.error('[Dashboard] Connection error', e);
+        setTimeout(connect, 3000);
+      }
+    };
+
+    connect();
+
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, []);
+
+  // Fetch local server metrics
+  useEffect(() => {
+    const fetchLocalMetrics = async () => {
+      try {
+        const res = await fetch('/api/metrics');
+        if (!res.ok) return;
+        const metrics: SystemMetrics = await res.json();
+        const now = Date.now();
+        
+        setServers(prev => {
+          const existingLocal = prev.find(s => s.config.type === 'local');
+          const lastData = lastMetricsMap.current.get('local');
+          
+          let newSpeed = existingLocal?.speed || { rx_sec: 0, tx_sec: 0 };
+          
+          if (lastData) {
+            const timeDiff = (now - lastData.time) / 1000;
+            if (timeDiff > 0) {
+              const rxDiff = metrics.network.total_rx - lastData.metrics.network.total_rx;
+              const txDiff = metrics.network.total_tx - lastData.metrics.network.total_tx;
+              newSpeed = {
+                rx_sec: Math.max(0, rxDiff / timeDiff),
+                tx_sec: Math.max(0, txDiff / timeDiff)
+              };
+            }
+          }
+          
+          lastMetricsMap.current.set('local', { metrics, time: now });
+          
+          const localServer: ServerState = {
+            config: {
+              id: 'local',
+              name: metrics.hostname || 'Local Server',
+              type: 'local',
+              location: '',
+              provider: 'Local',
+            },
+            metrics,
+            speed: newSpeed,
+            isConnected: true,
+            error: null
+          };
+          
+          const others = prev.filter(s => s.config.type !== 'local');
+          return [localServer, ...others];
+        });
+      } catch (e) {
+        console.error('[Local] Failed to fetch metrics', e);
+      }
+    };
+    
+    // Fetch immediately and then every second
+    fetchLocalMetrics();
+    const interval = setInterval(fetchLocalMetrics, 1000);
+    
     return () => clearInterval(interval);
   }, []);
 
-  return { servers };
+  return { servers, siteSettings };
 }
 
 export function formatBytes(bytes: number): string {

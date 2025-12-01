@@ -64,3 +64,31 @@ export interface LoadAverage {
   fifteen: number;
 }
 
+// Site Settings
+export interface SiteSettings {
+  site_name: string;
+  site_description: string;
+  social_links: SocialLink[];
+}
+
+export interface SocialLink {
+  platform: string;  // github, twitter, telegram, email, website, discord, etc.
+  url: string;
+  label?: string;
+}
+
+// History Data
+export interface HistoryPoint {
+  timestamp: string;
+  cpu: number;
+  memory: number;
+  disk: number;
+  net_rx: number;
+  net_tx: number;
+}
+
+export interface HistoryResponse {
+  server_id: string;
+  range: string;
+  data: HistoryPoint[];
+}

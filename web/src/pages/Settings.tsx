@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import type { SiteSettings, SocialLink } from '../types';
 
 interface RemoteServer {
   id: string;
@@ -8,14 +9,34 @@ interface RemoteServer {
   url: string;
   location: string;
   provider: string;
+  token?: string;
 }
 
+const PLATFORM_OPTIONS = [
+  { value: 'github', label: 'GitHub' },
+  { value: 'twitter', label: 'Twitter/X' },
+  { value: 'telegram', label: 'Telegram' },
+  { value: 'discord', label: 'Discord' },
+  { value: 'email', label: 'Email' },
+  { value: 'website', label: 'Website' },
+];
+
 export default function Settings() {
-  const { isAuthenticated, token, logout } = useAuth();
+  const { isAuthenticated, token, logout, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
   
   const [servers, setServers] = useState<RemoteServer[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Site settings
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>({
+    site_name: '',
+    site_description: '',
+    social_links: []
+  });
+  const [showSiteSettings, setShowSiteSettings] = useState(false);
+  const [siteSettingsSaving, setSiteSettingsSaving] = useState(false);
+  const [siteSettingsSuccess, setSiteSettingsSuccess] = useState(false);
   
   // New server form
   const [showAddForm, setShowAddForm] = useState(false);
@@ -34,13 +55,74 @@ export default function Settings() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
+    // Wait for auth check to complete before redirecting
+    if (authLoading) return;
+    
     if (!isAuthenticated) {
       navigate('/login');
       return;
     }
     fetchServers();
+    fetchSiteSettings();
     generateInstallCommand();
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, authLoading, navigate]);
+  
+  const fetchSiteSettings = async () => {
+    try {
+      const res = await fetch('/api/settings/site');
+      if (res.ok) {
+        const data = await res.json();
+        setSiteSettings(data);
+      }
+    } catch (e) {
+      console.error('Failed to fetch site settings', e);
+    }
+  };
+  
+  const saveSiteSettings = async () => {
+    setSiteSettingsSaving(true);
+    setSiteSettingsSuccess(false);
+    
+    try {
+      const res = await fetch('/api/settings/site', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(siteSettings)
+      });
+      
+      if (res.ok) {
+        setSiteSettingsSuccess(true);
+        setTimeout(() => setSiteSettingsSuccess(false), 3000);
+      }
+    } catch (e) {
+      console.error('Failed to save site settings', e);
+    }
+    
+    setSiteSettingsSaving(false);
+  };
+  
+  const addSocialLink = () => {
+    setSiteSettings({
+      ...siteSettings,
+      social_links: [...siteSettings.social_links, { platform: 'github', url: '', label: '' }]
+    });
+  };
+  
+  const removeSocialLink = (index: number) => {
+    setSiteSettings({
+      ...siteSettings,
+      social_links: siteSettings.social_links.filter((_, i) => i !== index)
+    });
+  };
+  
+  const updateSocialLink = (index: number, field: keyof SocialLink, value: string) => {
+    const updated = [...siteSettings.social_links];
+    updated[index] = { ...updated[index], [field]: value };
+    setSiteSettings({ ...siteSettings, social_links: updated });
+  };
   
   const generateInstallCommand = async () => {
     const host = window.location.host;
@@ -164,7 +246,7 @@ export default function Settings() {
     }
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="w-8 h-8 border-4 border-white/20 border-t-white rounded-full animate-spin" />
@@ -198,6 +280,122 @@ export default function Settings() {
         </button>
       </div>
 
+      {/* Site Settings Section */}
+      <div className="nezha-card p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold text-white flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+            Site Settings
+          </h2>
+          <button
+            onClick={() => setShowSiteSettings(!showSiteSettings)}
+            className="px-4 py-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-sm font-medium transition-colors"
+          >
+            {showSiteSettings ? 'Hide' : 'Edit'}
+          </button>
+        </div>
+        
+        {siteSettingsSuccess && (
+          <div className="mb-4 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm">
+            Settings saved successfully!
+          </div>
+        )}
+        
+        {showSiteSettings && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Site Name</label>
+                <input
+                  type="text"
+                  value={siteSettings.site_name}
+                  onChange={(e) => setSiteSettings({ ...siteSettings, site_name: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-blue-500/50"
+                  placeholder="xProb Dashboard"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Site Description</label>
+                <input
+                  type="text"
+                  value={siteSettings.site_description}
+                  onChange={(e) => setSiteSettings({ ...siteSettings, site_description: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-blue-500/50"
+                  placeholder="Real-time Server Monitoring"
+                />
+              </div>
+            </div>
+            
+            {/* Social Links */}
+            <div className="pt-4 border-t border-white/5">
+              <div className="flex items-center justify-between mb-3">
+                <label className="text-xs text-gray-500 uppercase tracking-wider">Social Links</label>
+                <button
+                  type="button"
+                  onClick={addSocialLink}
+                  className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                >
+                  + Add Link
+                </button>
+              </div>
+              
+              {siteSettings.social_links.length === 0 ? (
+                <p className="text-gray-600 text-sm text-center py-4">No social links configured</p>
+              ) : (
+                <div className="space-y-3">
+                  {siteSettings.social_links.map((link, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <select
+                        value={link.platform}
+                        onChange={(e) => updateSocialLink(index, 'platform', e.target.value)}
+                        className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-blue-500/50"
+                      >
+                        {PLATFORM_OPTIONS.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        value={link.url}
+                        onChange={(e) => updateSocialLink(index, 'url', e.target.value)}
+                        className="flex-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-blue-500/50"
+                        placeholder="https://..."
+                      />
+                      <input
+                        type="text"
+                        value={link.label || ''}
+                        onChange={(e) => updateSocialLink(index, 'label', e.target.value)}
+                        className="w-24 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-blue-500/50"
+                        placeholder="Label"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeSocialLink(index)}
+                        className="p-2 rounded-lg hover:bg-red-500/10 text-gray-500 hover:text-red-400 transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            <div className="flex justify-end pt-4">
+              <button
+                onClick={saveSiteSettings}
+                disabled={siteSettingsSaving}
+                className="px-4 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                {siteSettingsSaving ? 'Saving...' : 'Save Settings'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Quick Install Section */}
       <div className="nezha-card p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
@@ -212,12 +410,12 @@ export default function Settings() {
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
-            {showInstallCommand ? 'Hide' : 'Show'} Install Command
+            {showInstallCommand ? 'Hide' : 'Show'} Command
           </button>
         </div>
         
         <p className="text-gray-400 text-sm mb-4">
-          Run this command on any server to automatically install the monitoring agent and register it with this dashboard.
+          Run this command on any server to install the monitoring agent.
         </p>
         
         {showInstallCommand && (
@@ -233,35 +431,10 @@ export default function Settings() {
                   : 'bg-white/10 hover:bg-white/20 text-gray-400 hover:text-white'
               }`}
             >
-              {copied ? (
-                <span className="flex items-center gap-1">
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Copied!
-                </span>
-              ) : (
-                <span className="flex items-center gap-1">
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                  Copy
-                </span>
-              )}
+              {copied ? 'Copied!' : 'Copy'}
             </button>
           </div>
         )}
-        
-        <div className="mt-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-          <p className="text-amber-400 text-xs flex items-start gap-2">
-            <svg className="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span>
-              <strong>Tip:</strong> Modify <code className="px-1 py-0.5 rounded bg-amber-500/20">--location</code> and <code className="px-1 py-0.5 rounded bg-amber-500/20">--provider</code> to match your server's details (e.g., --location "HK" --provider "Vultr")
-            </span>
-          </p>
-        </div>
       </div>
 
       {/* Server Management Section */}
@@ -269,7 +442,7 @@ export default function Settings() {
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            Remote Servers
+            Connected Agents
           </h2>
           <button
             onClick={() => setShowAddForm(true)}
@@ -282,10 +455,9 @@ export default function Settings() {
           </button>
         </div>
 
-        {/* Add Server Form */}
         {showAddForm && (
           <form onSubmit={addServer} className="mb-6 p-4 rounded-xl bg-white/[0.02] border border-white/10">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Server Name</label>
                 <input
@@ -294,17 +466,6 @@ export default function Settings() {
                   onChange={(e) => setNewServer({ ...newServer, name: e.target.value })}
                   className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-emerald-500/50"
                   placeholder="e.g., US-West-1"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">WebSocket URL</label>
-                <input
-                  type="text"
-                  value={newServer.url}
-                  onChange={(e) => setNewServer({ ...newServer, url: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-emerald-500/50"
-                  placeholder="ws://your-server:3001/ws"
                   required
                 />
               </div>
@@ -326,63 +487,67 @@ export default function Settings() {
                   value={newServer.provider}
                   onChange={(e) => setNewServer({ ...newServer, provider: e.target.value })}
                   className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-emerald-500/50"
-                  placeholder="e.g., AWS, Vultr, Aliyun"
+                  placeholder="e.g., AWS, Vultr"
                 />
               </div>
             </div>
             <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowAddForm(false)}
-                className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 text-sm transition-colors"
-              >
+              <button type="button" onClick={() => setShowAddForm(false)} className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 text-sm transition-colors">
                 Cancel
               </button>
-              <button
-                type="submit"
-                disabled={addLoading}
-                className="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium transition-colors disabled:opacity-50"
-              >
+              <button type="submit" disabled={addLoading} className="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium transition-colors disabled:opacity-50">
                 {addLoading ? 'Adding...' : 'Add Server'}
               </button>
             </div>
           </form>
         )}
 
-        {/* Server List */}
         {servers.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
-            <p>No remote servers configured</p>
-            <p className="text-sm mt-1">Add a server to monitor it from this dashboard</p>
+            <p>No agents connected</p>
+            <p className="text-sm mt-1">Install the agent on a server using the command above</p>
           </div>
         ) : (
           <div className="space-y-3">
             {servers.map((server) => (
-              <div key={server.id} className="flex items-center justify-between p-4 rounded-xl bg-white/[0.02] border border-white/5 hover:border-white/10 transition-colors">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-sm font-bold text-blue-400">
-                    {server.location}
+              <div key={server.id} className="p-4 rounded-xl bg-white/[0.02] border border-white/5 hover:border-white/10 transition-colors">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-sm font-bold text-blue-400">
+                      {server.location}
+                    </div>
+                    <div>
+                      <div className="font-medium text-white">{server.name}</div>
+                      <div className="text-xs text-gray-500 font-mono">ID: {server.id.slice(0, 8)}...</div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="font-medium text-white">{server.name}</div>
-                    <div className="text-xs text-gray-500 font-mono">{server.url}</div>
+                  <div className="flex items-center gap-2">
+                    {server.provider && (
+                      <span className="px-2 py-1 rounded bg-amber-500/10 text-amber-400 text-xs">
+                        {server.provider}
+                      </span>
+                    )}
+                    <button
+                      onClick={() => deleteServer(server.id)}
+                      className="p-2 rounded-lg hover:bg-red-500/10 text-gray-500 hover:text-red-400 transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {server.provider && (
-                    <span className="px-2 py-1 rounded bg-amber-500/10 text-amber-400 text-xs">
-                      {server.provider}
-                    </span>
-                  )}
-                  <button
-                    onClick={() => deleteServer(server.id)}
-                    className="p-2 rounded-lg hover:bg-red-500/10 text-gray-500 hover:text-red-400 transition-colors"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
-                </div>
+                {server.token && (
+                  <div className="mt-3 pt-3 border-t border-white/5">
+                    <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Agent Token</div>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 px-2 py-1 rounded bg-black/20 text-xs text-emerald-400 font-mono truncate">{server.token}</code>
+                      <button onClick={() => navigator.clipboard.writeText(server.token || '')} className="px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white text-xs transition-colors">
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -406,64 +571,24 @@ export default function Settings() {
           <form onSubmit={changePassword} className="space-y-4">
             <div>
               <label className="block text-xs text-gray-500 mb-1">Current Password</label>
-              <input
-                type="password"
-                value={passwords.current}
-                onChange={(e) => setPasswords({ ...passwords, current: e.target.value })}
-                className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-purple-500/50"
-                required
-              />
+              <input type="password" value={passwords.current} onChange={(e) => setPasswords({ ...passwords, current: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-purple-500/50" required />
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">New Password</label>
-              <input
-                type="password"
-                value={passwords.new}
-                onChange={(e) => setPasswords({ ...passwords, new: e.target.value })}
-                className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-purple-500/50"
-                required
-              />
+              <input type="password" value={passwords.new} onChange={(e) => setPasswords({ ...passwords, new: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-purple-500/50" required />
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">Confirm New Password</label>
-              <input
-                type="password"
-                value={passwords.confirm}
-                onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
-                className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-purple-500/50"
-                required
-              />
+              <input type="password" value={passwords.confirm} onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-purple-500/50" required />
             </div>
-            {passwordError && (
-              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-                {passwordError}
-              </div>
-            )}
+            {passwordError && <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{passwordError}</div>}
             <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowPasswordForm(false);
-                  setPasswords({ current: '', new: '', confirm: '' });
-                  setPasswordError('');
-                }}
-                className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 text-sm transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white text-sm font-medium transition-colors"
-              >
-                Change Password
-              </button>
+              <button type="button" onClick={() => { setShowPasswordForm(false); setPasswords({ current: '', new: '', confirm: '' }); setPasswordError(''); }} className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 text-sm transition-colors">Cancel</button>
+              <button type="submit" className="px-4 py-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white text-sm font-medium transition-colors">Change Password</button>
             </div>
           </form>
         ) : (
-          <button
-            onClick={() => setShowPasswordForm(true)}
-            className="px-4 py-2 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 text-sm font-medium transition-colors"
-          >
+          <button onClick={() => setShowPasswordForm(true)} className="px-4 py-2 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 text-sm font-medium transition-colors">
             Change Password
           </button>
         )}
@@ -471,4 +596,3 @@ export default function Settings() {
     </div>
   );
 }
-
