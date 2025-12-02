@@ -870,7 +870,8 @@ impl MetricsCollector {
         }
         
         // Get base device (remove partition number)
-        let _base_device: String = device.chars().take_while(|c| !c.is_ascii_digit()).collect();
+        #[allow(unused_variables)]
+        let base_device: String = device.chars().take_while(|c| !c.is_ascii_digit()).collect();
         
         #[cfg(target_os = "linux")]
         {
