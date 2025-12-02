@@ -6,3 +6,8 @@ test-data/
 test-web/
 web/node_modules/
 web/dist/
+
+# Local config and data files
+*.db
+*-config.json
+releases/
