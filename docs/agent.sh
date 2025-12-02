@@ -147,8 +147,7 @@ get_latest_version() {
     fi
     
     if [ -z "$LATEST_VERSION" ]; then
-        warn "Could not fetch latest version, using v1.3.0"
-        LATEST_VERSION="v1.3.0"
+        error "Could not fetch latest version from GitHub. This may be due to rate limiting. Please try again later or check your network connection."
     fi
     
     success "Latest version: $LATEST_VERSION"
