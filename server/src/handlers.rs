@@ -16,7 +16,7 @@ use crate::state::AppState;
 use crate::types::{
     AddServerRequest, AgentRegisterRequest, AgentRegisterResponse, ChangePasswordRequest, Claims,
     HistoryPoint, HistoryQuery, HistoryResponse, InstallCommand, LoginRequest, LoginResponse,
-    ServerMetricsUpdate, SystemMetrics,
+    ServerMetricsUpdate, SystemMetrics, UpdateAgentRequest, UpdateAgentResponse,
 };
 
 // ============================================================================
@@ -447,6 +447,51 @@ pub async fn get_install_command(
         command,
         script_url: format!("{}/agent.sh", base_url),
     }))
+}
+
+// ============================================================================
+// Update Agent Handler
+// ============================================================================
+
+pub async fn update_agent(
+    State(state): State<AppState>,
+    Path(server_id): Path<String>,
+    Json(req): Json<UpdateAgentRequest>,
+) -> Result<Json<UpdateAgentResponse>, StatusCode> {
+    use crate::types::AgentCommand;
+    use axum::extract::ws::Message;
+
+    // Check if agent is connected
+    let connections = state.agent_connections.read().await;
+    
+    if let Some(sender) = connections.get(&server_id) {
+        // Send update command to agent
+        let cmd = AgentCommand {
+            cmd_type: "command".to_string(),
+            command: "update".to_string(),
+            download_url: req.download_url,
+        };
+        
+        if let Ok(json) = serde_json::to_string(&cmd) {
+            if sender.send(Message::Text(json.into())).await.is_ok() {
+                tracing::info!("Update command sent to agent {}", server_id);
+                return Ok(Json(UpdateAgentResponse {
+                    success: true,
+                    message: "Update command sent to agent".to_string(),
+                }));
+            }
+        }
+        
+        Ok(Json(UpdateAgentResponse {
+            success: false,
+            message: "Failed to send update command".to_string(),
+        }))
+    } else {
+        Ok(Json(UpdateAgentResponse {
+            success: false,
+            message: "Agent is not connected".to_string(),
+        }))
+    }
 }
 
 // ============================================================================

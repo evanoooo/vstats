@@ -27,7 +27,7 @@ use crate::db::{aggregate_daily, aggregate_hourly, cleanup_old_data, init_databa
 use crate::handlers::{
     add_server, change_password, delete_server, get_agent_script, get_all_metrics, get_history,
     get_install_command, get_metrics, get_servers, get_site_settings, health_check, login,
-    register_agent, update_site_settings, verify_token,
+    register_agent, update_agent, update_site_settings, verify_token,
 };
 use crate::middleware::auth_middleware;
 use crate::state::AppState;
@@ -181,6 +181,7 @@ async fn main() {
         metrics_tx: tx.clone(),
         agent_metrics: Arc::new(RwLock::new(HashMap::new())),
         db: Arc::new(Mutex::new(db)),
+        agent_connections: Arc::new(RwLock::new(HashMap::new())),
     };
 
     // Background task for metrics broadcasting and data aggregation
@@ -284,6 +285,7 @@ async fn main() {
     let protected_routes = Router::new()
         .route("/api/servers", post(add_server))
         .route("/api/servers/:id", delete(delete_server))
+        .route("/api/servers/:id/update", post(update_agent))
         .route("/api/auth/password", post(change_password))
         .route("/api/agent/register", post(register_agent))
         .route("/api/settings/site", put(update_site_settings))

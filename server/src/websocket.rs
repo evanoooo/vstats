@@ -7,6 +7,7 @@ use axum::{
 };
 use chrono::Utc;
 use futures::{SinkExt, StreamExt};
+use tokio::sync::mpsc;
 
 use crate::db::store_metrics;
 use crate::state::AppState;
@@ -96,124 +97,160 @@ pub async fn agent_ws_handler(
 async fn handle_agent_socket(socket: WebSocket, state: AppState) {
     let (mut sender, mut receiver) = socket.split();
     let mut authenticated_server_id: Option<String> = None;
+    
+    // Create channel for sending commands to this agent
+    let (cmd_tx, mut cmd_rx) = mpsc::channel::<Message>(16);
 
-    while let Some(Ok(msg)) = receiver.next().await {
-        match msg {
-            Message::Text(text) => {
-                if let Ok(agent_msg) = serde_json::from_str::<AgentMessage>(&text) {
-                    match agent_msg.msg_type.as_str() {
-                        "auth" => {
-                            if let (Some(server_id), Some(token)) =
-                                (agent_msg.server_id, agent_msg.token)
-                            {
-                                let config = state.config.read().await;
-                                if let Some(server) =
-                                    config.servers.iter().find(|s| s.id == server_id)
-                                {
-                                    if server.token == token {
-                                        authenticated_server_id = Some(server_id.clone());
-                                        let _ = sender
-                                            .send(Message::Text(
-                                                r#"{"type":"auth","status":"ok"}"#.into(),
-                                            ))
-                                            .await;
-                                        tracing::info!("Agent {} authenticated", server_id);
+    loop {
+        tokio::select! {
+            // Handle incoming messages from agent
+            msg = receiver.next() => {
+                match msg {
+                    Some(Ok(Message::Text(text))) => {
+                        if let Ok(agent_msg) = serde_json::from_str::<AgentMessage>(&text) {
+                            match agent_msg.msg_type.as_str() {
+                                "auth" => {
+                                    if let (Some(server_id), Some(token)) =
+                                        (agent_msg.server_id, agent_msg.token)
+                                    {
+                                        let config = state.config.read().await;
+                                        if let Some(server) =
+                                            config.servers.iter().find(|s| s.id == server_id)
+                                        {
+                                            if server.token == token {
+                                                authenticated_server_id = Some(server_id.clone());
+                                                
+                                                // Register this agent's command channel
+                                                {
+                                                    let mut connections = state.agent_connections.write().await;
+                                                    connections.insert(server_id.clone(), cmd_tx.clone());
+                                                }
+                                                
+                                                let _ = sender
+                                                    .send(Message::Text(
+                                                        r#"{"type":"auth","status":"ok"}"#.into(),
+                                                    ))
+                                                    .await;
+                                                tracing::info!("Agent {} authenticated and registered", server_id);
+                                            } else {
+                                                let _ = sender
+                                                    .send(Message::Text(
+                                                        r#"{"type":"auth","status":"error","message":"Invalid token"}"#
+                                                            .into(),
+                                                    ))
+                                                    .await;
+                                            }
+                                        } else {
+                                            let _ = sender
+                                                .send(Message::Text(
+                                                    r#"{"type":"auth","status":"error","message":"Server not found"}"#
+                                                        .into(),
+                                                ))
+                                                .await;
+                                        }
+                                    }
+                                }
+                                "metrics" => {
+                                    if let Some(ref server_id) = authenticated_server_id {
+                                        if let Some(metrics) = agent_msg.metrics {
+                                            // Store to database
+                                            {
+                                                let db = state.db.lock().await;
+                                                if let Err(e) = store_metrics(&db, server_id, &metrics) {
+                                                    tracing::warn!("Failed to store metrics: {}", e);
+                                                }
+                                            }
+
+                                            // Update in-memory state
+                                            let mut agent_metrics = state.agent_metrics.write().await;
+                                            agent_metrics.insert(
+                                                server_id.clone(),
+                                                AgentMetricsData {
+                                                    server_id: server_id.clone(),
+                                                    metrics: metrics.clone(),
+                                                    last_updated: Utc::now(),
+                                                },
+                                            );
+
+                                            // Broadcast to dashboard clients
+                                            let config = state.config.read().await;
+                                            let updates: Vec<ServerMetricsUpdate> = config
+                                                .servers
+                                                .iter()
+                                                .map(|server| {
+                                                    let metrics_data = agent_metrics.get(&server.id);
+                                                    let online = metrics_data
+                                                        .map(|m| {
+                                                            Utc::now()
+                                                                .signed_duration_since(m.last_updated)
+                                                                .num_seconds()
+                                                                < 30
+                                                        })
+                                                        .unwrap_or(false);
+
+                                                    ServerMetricsUpdate {
+                                                        server_id: server.id.clone(),
+                                                        server_name: server.name.clone(),
+                                                        location: server.location.clone(),
+                                                        provider: server.provider.clone(),
+                                                        online,
+                                                        metrics: metrics_data.map(|m| m.metrics.clone()),
+                                                    }
+                                                })
+                                                .collect();
+
+                                            let msg = DashboardMessage {
+                                                msg_type: "metrics".to_string(),
+                                                servers: updates,
+                                                site_settings: None,
+                                            };
+
+                                            if let Ok(json) = serde_json::to_string(&msg) {
+                                                let _ = state.metrics_tx.send(json);
+                                            }
+                                        }
                                     } else {
                                         let _ = sender
                                             .send(Message::Text(
-                                                r#"{"type":"auth","status":"error","message":"Invalid token"}"#
-                                                    .into(),
+                                                r#"{"type":"error","message":"Not authenticated"}"#.into(),
                                             ))
                                             .await;
                                     }
-                                } else {
-                                    let _ = sender
-                                        .send(Message::Text(
-                                            r#"{"type":"auth","status":"error","message":"Server not found"}"#
-                                                .into(),
-                                        ))
-                                        .await;
                                 }
+                                _ => {}
                             }
                         }
-                        "metrics" => {
-                            if let Some(ref server_id) = authenticated_server_id {
-                                if let Some(metrics) = agent_msg.metrics {
-                                    // Store to database
-                                    {
-                                        let db = state.db.lock().await;
-                                        if let Err(e) = store_metrics(&db, server_id, &metrics) {
-                                            tracing::warn!("Failed to store metrics: {}", e);
-                                        }
-                                    }
-
-                                    // Update in-memory state
-                                    let mut agent_metrics = state.agent_metrics.write().await;
-                                    agent_metrics.insert(
-                                        server_id.clone(),
-                                        AgentMetricsData {
-                                            server_id: server_id.clone(),
-                                            metrics: metrics.clone(),
-                                            last_updated: Utc::now(),
-                                        },
-                                    );
-
-                                    // Broadcast to dashboard clients
-                                    let config = state.config.read().await;
-                                    let updates: Vec<ServerMetricsUpdate> = config
-                                        .servers
-                                        .iter()
-                                        .map(|server| {
-                                            let metrics_data = agent_metrics.get(&server.id);
-                                            let online = metrics_data
-                                                .map(|m| {
-                                                    Utc::now()
-                                                        .signed_duration_since(m.last_updated)
-                                                        .num_seconds()
-                                                        < 30
-                                                })
-                                                .unwrap_or(false);
-
-                                            ServerMetricsUpdate {
-                                                server_id: server.id.clone(),
-                                                server_name: server.name.clone(),
-                                                location: server.location.clone(),
-                                                provider: server.provider.clone(),
-                                                online,
-                                                metrics: metrics_data.map(|m| m.metrics.clone()),
-                                            }
-                                        })
-                                        .collect();
-
-                                    let msg = DashboardMessage {
-                                        msg_type: "metrics".to_string(),
-                                        servers: updates,
-                                        site_settings: None,
-                                    };
-
-                                    if let Ok(json) = serde_json::to_string(&msg) {
-                                        let _ = state.metrics_tx.send(json);
-                                    }
-                                }
-                            } else {
-                                let _ = sender
-                                    .send(Message::Text(
-                                        r#"{"type":"error","message":"Not authenticated"}"#.into(),
-                                    ))
-                                    .await;
-                            }
-                        }
-                        _ => {}
                     }
+                    Some(Ok(Message::Close(_))) => break,
+                    Some(Err(_)) | None => break,
+                    _ => {}
                 }
             }
-            Message::Close(_) => break,
-            _ => {}
+            
+            // Handle commands from server to agent
+            cmd = cmd_rx.recv() => {
+                match cmd {
+                    Some(message) => {
+                        if sender.send(message).await.is_err() {
+                            break;
+                        }
+                    }
+                    None => break,
+                }
+            }
         }
     }
 
+    // Cleanup on disconnect
     if let Some(server_id) = authenticated_server_id {
         tracing::info!("Agent {} disconnected", server_id);
+        
+        // Remove from active connections
+        {
+            let mut connections = state.agent_connections.write().await;
+            connections.remove(&server_id);
+        }
+        
         let config = state.config.read().await;
         let agent_metrics = state.agent_metrics.read().await;
 

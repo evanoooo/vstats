@@ -124,6 +124,8 @@ pub struct ServerResponse {
     pub msg_type: String,
     pub status: Option<String>,
     pub message: Option<String>,
+    pub command: Option<String>,
+    pub download_url: Option<String>,
 }
 
 // ============================================================================

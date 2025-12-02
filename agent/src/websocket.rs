@@ -26,6 +26,111 @@ impl WebSocketClient {
         }
     }
     
+    /// Handle update command from server
+    async fn handle_update_command(&self, download_url: Option<&str>) {
+        info!("Starting self-update process...");
+        
+        // Get the current executable path
+        let current_exe = match std::env::current_exe() {
+            Ok(path) => path,
+            Err(e) => {
+                error!("Failed to get current executable path: {}", e);
+                return;
+            }
+        };
+        
+        // Determine download URL
+        let url = if let Some(url) = download_url {
+            url.to_string()
+        } else {
+            // Default to the server's agent binary endpoint
+            format!("{}/releases/vstats-agent", self.config.dashboard_url.trim_end_matches('/'))
+        };
+        
+        info!("Downloading update from: {}", url);
+        
+        // Download to a temporary file
+        let temp_path = current_exe.with_extension("new");
+        
+        match self.download_file(&url, &temp_path).await {
+            Ok(_) => {
+                info!("Download complete, applying update...");
+                
+                // On Unix, we need to set execute permissions
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    if let Ok(metadata) = std::fs::metadata(&temp_path) {
+                        let mut perms = metadata.permissions();
+                        perms.set_mode(0o755);
+                        if let Err(e) = std::fs::set_permissions(&temp_path, perms) {
+                            error!("Failed to set permissions: {}", e);
+                            return;
+                        }
+                    }
+                }
+                
+                // Backup current executable
+                let backup_path = current_exe.with_extension("backup");
+                if let Err(e) = std::fs::rename(&current_exe, &backup_path) {
+                    error!("Failed to backup current executable: {}", e);
+                    // Try to cleanup
+                    let _ = std::fs::remove_file(&temp_path);
+                    return;
+                }
+                
+                // Move new executable to current path
+                if let Err(e) = std::fs::rename(&temp_path, &current_exe) {
+                    error!("Failed to install new executable: {}", e);
+                    // Try to restore backup
+                    let _ = std::fs::rename(&backup_path, &current_exe);
+                    return;
+                }
+                
+                // Remove backup
+                let _ = std::fs::remove_file(&backup_path);
+                
+                info!("Update installed successfully! Restarting...");
+                
+                // Restart the agent
+                // Use systemctl if available (Linux with systemd)
+                #[cfg(target_os = "linux")]
+                {
+                    let _ = std::process::Command::new("systemctl")
+                        .args(["restart", "vstats-agent"])
+                        .spawn();
+                }
+                
+                // Exit to allow restart
+                std::process::exit(0);
+            }
+            Err(e) => {
+                error!("Failed to download update: {}", e);
+            }
+        }
+    }
+    
+    /// Download a file from URL to path
+    async fn download_file(&self, url: &str, path: &std::path::Path) -> Result<(), String> {
+        let response = reqwest::get(url)
+            .await
+            .map_err(|e| format!("HTTP request failed: {}", e))?;
+        
+        if !response.status().is_success() {
+            return Err(format!("Download failed with status: {}", response.status()));
+        }
+        
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| format!("Failed to read response: {}", e))?;
+        
+        std::fs::write(path, &bytes)
+            .map_err(|e| format!("Failed to write file: {}", e))?;
+        
+        Ok(())
+    }
+    
     /// Run the WebSocket client with automatic reconnection
     pub async fn run(&mut self) {
         let mut reconnect_delay = INITIAL_RECONNECT_DELAY;
@@ -148,10 +253,26 @@ impl WebSocketClient {
                             // Pong received, connection is alive
                         }
                         Some(Ok(Message::Text(text))) => {
-                            // Handle server messages if needed
+                            // Handle server messages
                             if let Ok(response) = serde_json::from_str::<ServerResponse>(&text) {
-                                if response.msg_type == "error" {
-                                    warn!("Server error: {:?}", response.message);
+                                match response.msg_type.as_str() {
+                                    "error" => {
+                                        warn!("Server error: {:?}", response.message);
+                                    }
+                                    "command" => {
+                                        if let Some(command) = response.command.as_deref() {
+                                            match command {
+                                                "update" => {
+                                                    info!("Received update command from server");
+                                                    self.handle_update_command(response.download_url.as_deref()).await;
+                                                }
+                                                _ => {
+                                                    warn!("Unknown command: {}", command);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    _ => {}
                                 }
                             }
                         }

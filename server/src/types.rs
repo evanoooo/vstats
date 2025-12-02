@@ -236,3 +236,29 @@ pub struct InstallCommand {
     pub script_url: String,
 }
 
+// ============================================================================
+// Update Agent Types
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateAgentRequest {
+    #[serde(default)]
+    pub download_url: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UpdateAgentResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+/// Command message sent to agent
+#[derive(Debug, Serialize)]
+pub struct AgentCommand {
+    #[serde(rename = "type")]
+    pub cmd_type: String,
+    pub command: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub download_url: Option<String>,
+}
+

@@ -27,6 +27,8 @@ export default function Settings() {
   
   const [servers, setServers] = useState<RemoteServer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [agentStatus, setAgentStatus] = useState<Record<string, boolean>>({});
+  const [updatingAgents, setUpdatingAgents] = useState<Record<string, boolean>>({});
   
   // Site settings
   const [siteSettings, setSiteSettings] = useState<SiteSettings>({
@@ -65,7 +67,61 @@ export default function Settings() {
     fetchServers();
     fetchSiteSettings();
     generateInstallCommand();
+    fetchAgentStatus();
   }, [isAuthenticated, authLoading, navigate]);
+  
+  // Refresh agent status periodically
+  useEffect(() => {
+    const interval = setInterval(fetchAgentStatus, 5000);
+    return () => clearInterval(interval);
+  }, []);
+  
+  const fetchAgentStatus = async () => {
+    try {
+      const res = await fetch('/api/metrics/all');
+      if (res.ok) {
+        const data = await res.json();
+        const status: Record<string, boolean> = {};
+        data.forEach((s: { server_id: string; online: boolean }) => {
+          status[s.server_id] = s.online;
+        });
+        setAgentStatus(status);
+      }
+    } catch (e) {
+      console.error('Failed to fetch agent status', e);
+    }
+  };
+  
+  const updateAgent = async (serverId: string) => {
+    setUpdatingAgents(prev => ({ ...prev, [serverId]: true }));
+    
+    try {
+      const res = await fetch(`/api/servers/${serverId}/update`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({})
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          alert('Update command sent successfully! The agent will restart.');
+        } else {
+          alert(`Update failed: ${data.message}`);
+        }
+      } else {
+        alert('Failed to send update command');
+      }
+    } catch (e) {
+      console.error('Failed to update agent', e);
+      alert('Failed to send update command');
+    }
+    
+    setUpdatingAgents(prev => ({ ...prev, [serverId]: false }));
+  };
   
   const fetchSiteSettings = async () => {
     try {
@@ -509,47 +565,81 @@ export default function Settings() {
           </div>
         ) : (
           <div className="space-y-3">
-            {servers.map((server) => (
-              <div key={server.id} className="p-4 rounded-xl bg-white/[0.02] border border-white/5 hover:border-white/10 transition-colors">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-sm font-bold text-blue-400">
-                      {server.location}
+            {servers.map((server) => {
+              const isOnline = agentStatus[server.id] || false;
+              const isUpdating = updatingAgents[server.id] || false;
+              
+              return (
+                <div key={server.id} className="p-4 rounded-xl bg-white/[0.02] border border-white/5 hover:border-white/10 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-sm font-bold text-blue-400">
+                        {server.location}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-white">{server.name}</span>
+                          <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]' : 'bg-gray-500'}`} />
+                          <span className={`text-xs ${isOnline ? 'text-emerald-400' : 'text-gray-500'}`}>
+                            {isOnline ? 'Online' : 'Offline'}
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-500 font-mono">ID: {server.id.slice(0, 8)}...</div>
+                      </div>
                     </div>
-                    <div>
-                      <div className="font-medium text-white">{server.name}</div>
-                      <div className="text-xs text-gray-500 font-mono">ID: {server.id.slice(0, 8)}...</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {server.provider && (
-                      <span className="px-2 py-1 rounded bg-amber-500/10 text-amber-400 text-xs">
-                        {server.provider}
-                      </span>
-                    )}
-                    <button
-                      onClick={() => deleteServer(server.id)}
-                      className="p-2 rounded-lg hover:bg-red-500/10 text-gray-500 hover:text-red-400 transition-colors"
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-                {server.token && (
-                  <div className="mt-3 pt-3 border-t border-white/5">
-                    <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Agent Token</div>
                     <div className="flex items-center gap-2">
-                      <code className="flex-1 px-2 py-1 rounded bg-black/20 text-xs text-emerald-400 font-mono truncate">{server.token}</code>
-                      <button onClick={() => navigator.clipboard.writeText(server.token || '')} className="px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white text-xs transition-colors">
-                        Copy
+                      {server.provider && (
+                        <span className="px-2 py-1 rounded bg-amber-500/10 text-amber-400 text-xs">
+                          {server.provider}
+                        </span>
+                      )}
+                      {/* Update Button */}
+                      <button
+                        onClick={() => updateAgent(server.id)}
+                        disabled={!isOnline || isUpdating}
+                        className={`p-2 rounded-lg transition-colors ${
+                          isOnline && !isUpdating
+                            ? 'hover:bg-cyan-500/10 text-gray-500 hover:text-cyan-400'
+                            : 'text-gray-600 cursor-not-allowed'
+                        }`}
+                        title={isOnline ? 'Update Agent' : 'Agent is offline'}
+                      >
+                        {isUpdating ? (
+                          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => deleteServer(server.id)}
+                        className="p-2 rounded-lg hover:bg-red-500/10 text-gray-500 hover:text-red-400 transition-colors"
+                        title="Delete Server"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
                       </button>
                     </div>
                   </div>
-                )}
-              </div>
-            ))}
+                  {server.token && (
+                    <div className="mt-3 pt-3 border-t border-white/5">
+                      <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Agent Token</div>
+                      <div className="flex items-center gap-2">
+                        <code className="flex-1 px-2 py-1 rounded bg-black/20 text-xs text-emerald-400 font-mono truncate">{server.token}</code>
+                        <button onClick={() => navigator.clipboard.writeText(server.token || '')} className="px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white text-xs transition-colors">
+                          Copy
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
