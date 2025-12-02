@@ -144,12 +144,29 @@ download_binary() {
     
     info "Downloading from: $DOWNLOAD_URL"
     
-    if curl -fsSL "$DOWNLOAD_URL" -o "$INSTALL_DIR/vstats-server" 2>/dev/null; then
-        chmod +x "$INSTALL_DIR/vstats-server"
-        success "Downloaded binary successfully"
-    else
-        error "Failed to download binary. Please check https://github.com/${GITHUB_REPO}/releases"
-    fi
+    # Download with retry and better error handling
+    local retry=0
+    local max_retries=3
+    
+    while [ $retry -lt $max_retries ]; do
+        if curl -L --fail --silent --show-error "$DOWNLOAD_URL" -o "$INSTALL_DIR/vstats-server" 2>&1; then
+            # Verify the download is not empty and is executable
+            if [ -s "$INSTALL_DIR/vstats-server" ]; then
+                chmod +x "$INSTALL_DIR/vstats-server"
+                success "Downloaded binary successfully"
+                return 0
+            else
+                warn "Downloaded file is empty, retrying..."
+                rm -f "$INSTALL_DIR/vstats-server"
+            fi
+        else
+            warn "Download attempt $((retry + 1)) failed, retrying..."
+        fi
+        retry=$((retry + 1))
+        sleep 2
+    done
+    
+    error "Failed to download binary after $max_retries attempts. Please check https://github.com/${GITHUB_REPO}/releases"
 }
 
 # Download web assets

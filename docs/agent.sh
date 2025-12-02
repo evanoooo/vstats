@@ -162,22 +162,40 @@ download_binary() {
     
     info "URL: $DOWNLOAD_URL"
     
-    if command -v curl &> /dev/null; then
-        if ! curl -fsSL "$DOWNLOAD_URL" -o /tmp/vstats-agent 2>/dev/null; then
-            error "Failed to download binary. Check https://github.com/${GITHUB_REPO}/releases"
-        fi
-    elif command -v wget &> /dev/null; then
-        if ! wget -qO /tmp/vstats-agent "$DOWNLOAD_URL" 2>/dev/null; then
-            error "Failed to download binary. Check https://github.com/${GITHUB_REPO}/releases"
-        fi
-    else
-        error "curl or wget is required"
-    fi
+    # Download with retry
+    local retry=0
+    local max_retries=3
     
-    chmod +x /tmp/vstats-agent
-    mv /tmp/vstats-agent "$INSTALL_DIR/vstats-agent"
+    while [ $retry -lt $max_retries ]; do
+        if command -v curl &> /dev/null; then
+            if curl -L --fail --silent --show-error "$DOWNLOAD_URL" -o /tmp/vstats-agent 2>&1; then
+                if [ -s /tmp/vstats-agent ]; then
+                    chmod +x /tmp/vstats-agent
+                    mv /tmp/vstats-agent "$INSTALL_DIR/vstats-agent"
+                    success "Binary installed to $INSTALL_DIR/vstats-agent"
+                    return 0
+                fi
+            fi
+        elif command -v wget &> /dev/null; then
+            if wget -q "$DOWNLOAD_URL" -O /tmp/vstats-agent 2>&1; then
+                if [ -s /tmp/vstats-agent ]; then
+                    chmod +x /tmp/vstats-agent
+                    mv /tmp/vstats-agent "$INSTALL_DIR/vstats-agent"
+                    success "Binary installed to $INSTALL_DIR/vstats-agent"
+                    return 0
+                fi
+            fi
+        else
+            error "curl or wget is required"
+        fi
+        
+        warn "Download attempt $((retry + 1)) failed, retrying..."
+        rm -f /tmp/vstats-agent
+        retry=$((retry + 1))
+        sleep 2
+    done
     
-    success "Binary installed to $INSTALL_DIR/vstats-agent"
+    error "Failed to download binary after $max_retries attempts. Check https://github.com/${GITHUB_REPO}/releases"
 }
 
 # Setup directories
