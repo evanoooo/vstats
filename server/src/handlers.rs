@@ -17,7 +17,8 @@ use crate::state::AppState;
 use crate::types::{
     AddServerRequest, AgentRegisterRequest, AgentRegisterResponse, ChangePasswordRequest, Claims,
     HistoryPoint, HistoryQuery, HistoryResponse, InstallCommand, LoginRequest, LoginResponse,
-    ServerMetricsUpdate, SystemMetrics, UpdateAgentRequest, UpdateAgentResponse, UpdateServerRequest,
+    PingHistoryPoint, PingHistoryTarget, ServerMetricsUpdate, SystemMetrics, UpdateAgentRequest,
+    UpdateAgentResponse, UpdateServerRequest,
 };
 
 // Version constants
@@ -487,11 +488,81 @@ pub async fn get_history(
         }
     };
 
+    // Fetch ping targets history for 1h and 24h ranges (ping_raw only kept for 24h)
+    let ping_targets = if matches!(query.range.as_str(), "1h" | "24h") {
+        fetch_ping_history(&db, &server_id, &query.range)
+            .unwrap_or_default()
+    } else {
+        vec![]
+    };
+
     Ok(Json(HistoryResponse {
         server_id,
         range: query.range,
         data,
+        ping_targets,
     }))
+}
+
+/// Fetch ping history data grouped by target
+fn fetch_ping_history(
+    db: &rusqlite::Connection,
+    server_id: &str,
+    range: &str,
+) -> Result<Vec<PingHistoryTarget>, rusqlite::Error> {
+    use std::collections::HashMap;
+    
+    let cutoff = match range {
+        "1h" => (Utc::now() - Duration::hours(1)).to_rfc3339(),
+        _ => (Utc::now() - Duration::hours(24)).to_rfc3339(),
+    };
+    
+    // For 24h, sample every 5 minutes to reduce data
+    let sql = if range == "24h" {
+        r#"SELECT target_name, target_host, timestamp, latency_ms, status
+           FROM ping_raw 
+           WHERE server_id = ?1 AND timestamp >= ?2
+           AND (CAST(strftime('%s', timestamp) AS INTEGER) % 300) < 60
+           ORDER BY target_name, timestamp ASC"#
+    } else {
+        r#"SELECT target_name, target_host, timestamp, latency_ms, status
+           FROM ping_raw 
+           WHERE server_id = ?1 AND timestamp >= ?2
+           ORDER BY target_name, timestamp ASC"#
+    };
+    
+    let mut stmt = db.prepare(sql)?;
+    
+    let rows = stmt.query_map(params![server_id, &cutoff], |row| {
+        Ok((
+            row.get::<_, String>(0)?,  // target_name
+            row.get::<_, String>(1)?,  // target_host
+            row.get::<_, String>(2)?,  // timestamp
+            row.get::<_, Option<f64>>(3)?,  // latency_ms
+            row.get::<_, String>(4)?,  // status
+        ))
+    })?;
+    
+    // Group by target
+    let mut targets_map: HashMap<String, PingHistoryTarget> = HashMap::new();
+    
+    for row in rows.filter_map(|r| r.ok()) {
+        let (name, host, timestamp, latency_ms, status) = row;
+        
+        let target = targets_map.entry(name.clone()).or_insert_with(|| PingHistoryTarget {
+            name: name.clone(),
+            host: host.clone(),
+            data: vec![],
+        });
+        
+        target.data.push(PingHistoryPoint {
+            timestamp,
+            latency_ms,
+            status,
+        });
+    }
+    
+    Ok(targets_map.into_values().collect())
 }
 
 // ============================================================================

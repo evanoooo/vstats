@@ -64,6 +64,21 @@ pub fn init_database() -> rusqlite::Result<Connection> {
         CREATE INDEX IF NOT EXISTS idx_metrics_raw_server_time ON metrics_raw(server_id, timestamp);
         CREATE INDEX IF NOT EXISTS idx_metrics_hourly_server_time ON metrics_hourly(server_id, hour_start);
         CREATE INDEX IF NOT EXISTS idx_metrics_daily_server_time ON metrics_daily(server_id, date);
+        
+        -- Ping metrics per target (keep for 24 hours)
+        CREATE TABLE IF NOT EXISTS ping_raw (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            server_id TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            target_name TEXT NOT NULL,
+            target_host TEXT NOT NULL,
+            latency_ms REAL,
+            packet_loss REAL NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'ok'
+        );
+        
+        CREATE INDEX IF NOT EXISTS idx_ping_raw_server_time ON ping_raw(server_id, timestamp);
+        CREATE INDEX IF NOT EXISTS idx_ping_raw_target ON ping_raw(server_id, target_name, timestamp);
     "#)?;
     
     // Add ping_ms column if it doesn't exist (migration for existing databases)
@@ -71,11 +86,28 @@ pub fn init_database() -> rusqlite::Result<Connection> {
     let _ = conn.execute("ALTER TABLE metrics_hourly ADD COLUMN ping_avg REAL", []);
     let _ = conn.execute("ALTER TABLE metrics_daily ADD COLUMN ping_avg REAL", []);
     
+    // Create ping_raw table if not exists (migration)
+    let _ = conn.execute_batch(r#"
+        CREATE TABLE IF NOT EXISTS ping_raw (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            server_id TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            target_name TEXT NOT NULL,
+            target_host TEXT NOT NULL,
+            latency_ms REAL,
+            packet_loss REAL NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'ok'
+        );
+        CREATE INDEX IF NOT EXISTS idx_ping_raw_server_time ON ping_raw(server_id, timestamp);
+        CREATE INDEX IF NOT EXISTS idx_ping_raw_target ON ping_raw(server_id, target_name, timestamp);
+    "#);
+    
     Ok(conn)
 }
 
 pub fn store_metrics(conn: &Connection, server_id: &str, metrics: &SystemMetrics) -> rusqlite::Result<()> {
     let disk_usage = metrics.disks.first().map(|d| d.usage_percent).unwrap_or(0.0);
+    let timestamp = metrics.timestamp.to_rfc3339();
     
     // Get average ping latency from all targets
     let ping_ms: Option<f64> = metrics.ping.as_ref().and_then(|p| {
@@ -94,7 +126,7 @@ pub fn store_metrics(conn: &Connection, server_id: &str, metrics: &SystemMetrics
            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)"#,
         params![
             server_id,
-            metrics.timestamp.to_rfc3339(),
+            &timestamp,
             metrics.cpu.usage,
             metrics.memory.usage_percent,
             disk_usage,
@@ -106,6 +138,26 @@ pub fn store_metrics(conn: &Connection, server_id: &str, metrics: &SystemMetrics
             ping_ms,
         ],
     )?;
+    
+    // Store individual ping targets
+    if let Some(ref ping) = metrics.ping {
+        for target in &ping.targets {
+            conn.execute(
+                r#"INSERT INTO ping_raw (server_id, timestamp, target_name, target_host, latency_ms, packet_loss, status)
+                   VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"#,
+                params![
+                    server_id,
+                    &timestamp,
+                    &target.name,
+                    &target.host,
+                    target.latency_ms,
+                    target.packet_loss,
+                    &target.status,
+                ],
+            )?;
+        }
+    }
+    
     Ok(())
 }
 
@@ -163,6 +215,9 @@ pub fn cleanup_old_data(conn: &Connection) -> rusqlite::Result<()> {
     // Delete raw data older than 24 hours
     let cutoff_raw = (Utc::now() - Duration::hours(24)).to_rfc3339();
     conn.execute("DELETE FROM metrics_raw WHERE timestamp < ?1", params![cutoff_raw])?;
+    
+    // Delete ping raw data older than 24 hours
+    conn.execute("DELETE FROM ping_raw WHERE timestamp < ?1", params![cutoff_raw])?;
     
     // Delete hourly data older than 30 days
     let cutoff_hourly = (Utc::now() - Duration::days(30)).to_rfc3339();

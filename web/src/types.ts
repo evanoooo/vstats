@@ -108,4 +108,17 @@ export interface HistoryResponse {
   server_id: string;
   range: string;
   data: HistoryPoint[];
+  ping_targets?: PingHistoryTarget[];
+}
+
+export interface PingHistoryTarget {
+  name: string;
+  host: string;
+  data: PingHistoryPoint[];
+}
+
+export interface PingHistoryPoint {
+  timestamp: string;
+  latency_ms: number | null;
+  status: string;
 }

@@ -104,6 +104,22 @@ pub struct HistoryResponse {
     pub server_id: String,
     pub range: String,
     pub data: Vec<HistoryPoint>,
+    #[serde(default)]
+    pub ping_targets: Vec<PingHistoryTarget>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PingHistoryTarget {
+    pub name: String,
+    pub host: String,
+    pub data: Vec<PingHistoryPoint>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PingHistoryPoint {
+    pub timestamp: String,
+    pub latency_ms: Option<f64>,
+    pub status: String,
 }
 
 // ============================================================================

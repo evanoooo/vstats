@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useServerManager, formatBytes, formatSpeed, formatUptime } from '../hooks/useMetrics';
 import { getOsIcon, getProviderIcon } from '../components/Icons';
 import { getProviderLogo, getDistributionLogo, LogoImage } from '../utils/logoUtils';
-import type { HistoryPoint, HistoryResponse } from '../types';
+import type { HistoryPoint, HistoryResponse, PingHistoryTarget } from '../types';
 
 const FLAGS: Record<string, string> = {
   'CN': '🇨🇳', 'HK': '🇭🇰', 'TW': '🇹🇼', 'JP': '🇯🇵', 'KR': '🇰🇷',
@@ -37,6 +37,7 @@ function HistoryChart({ serverId }: { serverId: string }) {
   const [range, setRange] = useState<TimeRange>('24h');
   const [tab, setTab] = useState<HistoryTab>('overview');
   const [data, setData] = useState<HistoryPoint[]>([]);
+  const [pingTargets, setPingTargets] = useState<PingHistoryTarget[]>([]);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [isFetching, setIsFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +53,7 @@ function HistoryChart({ serverId }: { serverId: string }) {
         if (!res.ok) throw new Error('Failed to fetch history');
         const json: HistoryResponse = await res.json();
         setData(json.data);
+        setPingTargets(json.ping_targets || []);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Unknown error');
       } finally {
@@ -371,6 +373,75 @@ function HistoryChart({ serverId }: { serverId: string }) {
         );
 
       case 'ping':
+        // Colors for different ping targets
+        const pingColors = ['rose', 'cyan', 'amber', 'purple', 'emerald', 'blue'];
+        
+        // Check if we have detailed ping target data
+        if (pingTargets.length > 0) {
+          return (
+            <div className={`transition-opacity ${opacity}`}>
+              <div className="space-y-6">
+                {pingTargets.map((target, idx) => {
+                  const color = pingColors[idx % pingColors.length];
+                  const validData = target.data.filter(d => d.latency_ms !== null);
+                  if (validData.length === 0) return null;
+                  
+                  const values = validData.map(d => d.latency_ms!);
+                  const avg = values.reduce((a, b) => a + b, 0) / values.length;
+                  const min = Math.min(...values);
+                  const max = Math.max(...values);
+                  
+                  // Sample data for display
+                  const sampleRate = Math.max(1, Math.floor(target.data.length / 60));
+                  const sampledPingData = target.data.filter((_, i) => i % sampleRate === 0);
+                  
+                  const colorClasses: Record<string, { bg: string; text: string; border: string }> = {
+                    rose: { bg: 'bg-rose-500', text: 'text-rose-400', border: 'border-rose-500/20' },
+                    cyan: { bg: 'bg-cyan-500', text: 'text-cyan-400', border: 'border-cyan-500/20' },
+                    amber: { bg: 'bg-amber-500', text: 'text-amber-400', border: 'border-amber-500/20' },
+                    purple: { bg: 'bg-purple-500', text: 'text-purple-400', border: 'border-purple-500/20' },
+                    emerald: { bg: 'bg-emerald-500', text: 'text-emerald-400', border: 'border-emerald-500/20' },
+                    blue: { bg: 'bg-blue-500', text: 'text-blue-400', border: 'border-blue-500/20' },
+                  };
+                  const c = colorClasses[color];
+                  
+                  return (
+                    <div key={target.name} className={`p-4 rounded-lg bg-white/[0.02] border ${c.border}`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2 h-2 rounded-full ${c.bg}`}></span>
+                          <span className={`text-sm font-medium ${c.text}`}>{target.name}</span>
+                          <span className="text-xs text-gray-500 font-mono">({target.host})</span>
+                        </div>
+                        <div className="flex gap-4 text-xs">
+                          <span className="text-gray-500">min: <span className="text-emerald-400 font-mono">{min.toFixed(1)}ms</span></span>
+                          <span className="text-gray-500">avg: <span className={`${c.text} font-mono`}>{avg.toFixed(1)}ms</span></span>
+                          <span className="text-gray-500">max: <span className="text-amber-400 font-mono">{max.toFixed(1)}ms</span></span>
+                        </div>
+                      </div>
+                      <div className="h-16 flex items-end gap-px bg-white/[0.02] rounded-lg p-2 overflow-hidden">
+                        {sampledPingData.map((point, i) => {
+                          const value = point.latency_ms ?? 0;
+                          const maxVal = Math.max(...values, 1);
+                          return (
+                            <div
+                              key={i}
+                              className={`flex-1 min-w-[2px] ${c.bg} rounded-t transition-all hover:opacity-80 cursor-pointer ${point.status !== 'ok' ? 'opacity-30' : ''}`}
+                              style={{ height: `${Math.max((value / maxVal) * 100, 1)}%` }}
+                              title={`${new Date(point.timestamp).toLocaleTimeString()}: ${value.toFixed(1)} ms (${point.status})`}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        }
+        
+        // Fallback to aggregated ping_ms data
         const pingData = sampledData.filter(d => d.ping_ms !== undefined && d.ping_ms !== null);
         if (pingData.length === 0) {
           return (
@@ -396,7 +467,7 @@ function HistoryChart({ serverId }: { serverId: string }) {
             <Chart 
               data={pingData} 
               color="rose" 
-              label="Ping Latency"
+              label="Ping Latency (Average)"
               getValue={d => d.ping_ms ?? 0}
               formatValue={v => `${v.toFixed(1)} ms`}
             />
