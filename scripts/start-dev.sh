@@ -8,20 +8,27 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-SERVER_DIR="$PROJECT_ROOT/server"
-AGENT_DIR="$PROJECT_ROOT/agent"
+SERVER_DIR="$PROJECT_ROOT/server-go"
+AGENT_DIR="$PROJECT_ROOT/agent-go"
 WEB_DIR="$PROJECT_ROOT/web"
 
 # Colors
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[0;33m'
+RED='\033[0;31m'
 NC='\033[0m'
 
 echo -e "${BLUE}════════════════════════════════════════${NC}"
 echo -e "${BLUE}       vStats Development Server        ${NC}"
 echo -e "${BLUE}════════════════════════════════════════${NC}"
 echo ""
+
+# Check if Go is installed
+if ! command -v go &> /dev/null; then
+    echo -e "${RED}Error: Go is not installed. Please install Go 1.22 or later.${NC}"
+    exit 1
+fi
 
 # Build frontend
 echo -e "${YELLOW}[1/4]${NC} Building frontend..."
@@ -36,23 +43,22 @@ echo ""
 # Build backend
 echo -e "${YELLOW}[2/4]${NC} Building backend..."
 cd "$SERVER_DIR"
-cargo build --release
+go build -o "$PROJECT_ROOT/vstats-server-dev" .
 echo -e "${GREEN}✓ Backend built${NC}"
 echo ""
 
-# Build agent
+# Build agent (optional, for testing)
 echo -e "${YELLOW}[3/4]${NC} Building agent..."
 cd "$AGENT_DIR"
-cargo build --release
+go build -o "$PROJECT_ROOT/vstats-agent-dev" .
 echo -e "${GREEN}✓ Agent built${NC}"
 echo ""
 
 # Set environment variables
-export RUST_LOG=info
 export VSTATS_PORT=3001
 export VSTATS_WEB_DIR="$WEB_DIR/dist"
 
-SERVER_BINARY="$SERVER_DIR/target/release/vstats-server"
+SERVER_BINARY="$PROJECT_ROOT/vstats-server-dev"
 
 # Kill existing vstats-server processes
 echo -e "${YELLOW}[0/4]${NC} Stopping existing services..."
@@ -73,7 +79,6 @@ echo ""
 
 # Reset password to get a fresh one for development
 echo -e "${YELLOW}[4/4]${NC} Resetting admin password..."
-cd "$SERVER_DIR"
 PASSWORD_OUTPUT=$("$SERVER_BINARY" --reset-password 2>&1)
 # Extract password from output (format: "New admin password: {password}")
 ADMIN_PASSWORD=$(echo "$PASSWORD_OUTPUT" | grep "New admin password:" | sed -E 's/.*New admin password: +([^ ]+).*/\1/' | tr -d ' ')
@@ -90,6 +95,6 @@ echo -e "${GREEN}Pass:   ${ADMIN_PASSWORD}${NC}"
 echo -e "${BLUE}════════════════════════════════════════${NC}"
 echo ""
 
-# Change to server directory and run
-cd "$SERVER_DIR"
+# Change to project root and run
+cd "$PROJECT_ROOT"
 "$SERVER_BINARY"

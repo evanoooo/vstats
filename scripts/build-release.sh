@@ -1,7 +1,7 @@
 #!/bin/bash
 #
-# Build release binaries for vStats (agent and server)
-# Creates portable static binaries using musl for Linux
+# Build release binaries for vStats (agent and server) using Go
+# Creates portable static binaries
 #
 
 set -e
@@ -22,222 +22,175 @@ success() { echo -e "${GREEN}[OK]${NC} $1"; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 
+# Check if Go is installed
+if ! command -v go &> /dev/null; then
+    error "Go is not installed. Please install Go 1.22 or later."
+fi
+
 # Detect current platform
 detect_platform() {
     OS=$(uname -s | tr '[:upper:]' '[:lower:]')
     ARCH=$(uname -m)
     
     case "$ARCH" in
-        x86_64|amd64) ARCH="x86_64" ;;
-        aarch64|arm64) ARCH="aarch64" ;;
+        x86_64|amd64) ARCH="amd64" ;;
+        aarch64|arm64) ARCH="arm64" ;;
         *) error "Unsupported architecture: $ARCH" ;;
     esac
     
     info "Building on: $OS-$ARCH"
 }
 
-# Install required targets
-install_targets() {
-    info "Installing Rust targets..."
-    
-    # Always install musl target for portable Linux binaries
-    if [[ "$OS" == "linux" ]]; then
-        rustup target add x86_64-unknown-linux-musl 2>/dev/null || true
-        rustup target add aarch64-unknown-linux-musl 2>/dev/null || true
-    fi
-    
-    # macOS targets
-    if [[ "$OS" == "darwin" ]]; then
-        rustup target add x86_64-apple-darwin 2>/dev/null || true
-        rustup target add aarch64-apple-darwin 2>/dev/null || true
-    fi
-    
-    success "Targets installed"
-}
-
-# Install musl toolchain (Linux only)
-install_musl_toolchain() {
-    if [[ "$OS" != "linux" ]]; then
-        return
-    fi
-    
-    if ! command -v musl-gcc &> /dev/null; then
-        warn "musl-gcc not found. Installing..."
-        
-        if command -v apt-get &> /dev/null; then
-            sudo apt-get update && sudo apt-get install -y musl-tools
-        elif command -v yum &> /dev/null; then
-            sudo yum install -y musl-gcc musl-devel
-        elif command -v dnf &> /dev/null; then
-            sudo dnf install -y musl-gcc musl-devel
-        elif command -v apk &> /dev/null; then
-            # Alpine already has musl
-            :
-        elif command -v brew &> /dev/null; then
-            brew install filosottile/musl-cross/musl-cross
-        else
-            error "Cannot install musl-gcc. Please install it manually."
-        fi
-    fi
-    
-    success "musl toolchain ready"
-}
-
 # Build agent
 build_agent() {
-    local target="$1"
-    local output_name="$2"
+    local goos="$1"
+    local goarch="$2"
+    local output_name="$3"
+    local version="${4:-dev}"
     
-    info "Building agent for $target..."
+    info "Building agent for $goos/$goarch..."
     
-    cd "$PROJECT_ROOT/agent"
+    cd "$PROJECT_ROOT/agent-go"
     
-    if [[ "$target" == *"musl"* ]]; then
-        # Static build with musl
-        RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --target "$target"
-    else
-        cargo build --release --target "$target"
-    fi
+    GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 go build \
+        -ldflags "-X main.AgentVersion=$version" \
+        -trimpath \
+        -a -installsuffix cgo \
+        -o "$RELEASE_DIR/$output_name" \
+        .
     
-    local binary_path="target/$target/release/vstats-agent"
-    
-    if [ -f "$binary_path" ]; then
-        mkdir -p "$RELEASE_DIR"
-        cp "$binary_path" "$RELEASE_DIR/$output_name"
+    if [ -f "$RELEASE_DIR/$output_name" ]; then
         chmod +x "$RELEASE_DIR/$output_name"
         success "Built: $output_name ($(du -h "$RELEASE_DIR/$output_name" | cut -f1))"
     else
-        error "Build failed for $target"
+        error "Build failed for $goos/$goarch"
     fi
 }
 
 # Build server
 build_server() {
-    local target="$1"
-    local output_name="$2"
+    local goos="$1"
+    local goarch="$2"
+    local output_name="$3"
+    local version="${4:-dev}"
     
-    info "Building server for $target..."
+    info "Building server for $goos/$goarch..."
     
-    cd "$PROJECT_ROOT/server"
+    cd "$PROJECT_ROOT/server-go"
     
-    if [[ "$target" == *"musl"* ]]; then
-        # Static build with musl
-        RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --target "$target"
-    else
-        cargo build --release --target "$target"
-    fi
+    GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 go build \
+        -ldflags "-X main.ServerVersion=$version" \
+        -trimpath \
+        -a -installsuffix cgo \
+        -o "$RELEASE_DIR/$output_name" \
+        .
     
-    local binary_path="target/$target/release/vstats-server"
-    
-    if [ -f "$binary_path" ]; then
-        mkdir -p "$RELEASE_DIR"
-        cp "$binary_path" "$RELEASE_DIR/$output_name"
+    if [ -f "$RELEASE_DIR/$output_name" ]; then
         chmod +x "$RELEASE_DIR/$output_name"
         success "Built: $output_name ($(du -h "$RELEASE_DIR/$output_name" | cut -f1))"
     else
-        error "Build failed for $target"
+        error "Build failed for $goos/$goarch"
     fi
 }
 
 # Build all targets for current platform
 build_native() {
     detect_platform
-    install_targets
-    
     mkdir -p "$RELEASE_DIR"
     
+    VERSION="${1:-dev}"
+    
     if [[ "$OS" == "linux" ]]; then
-        install_musl_toolchain
-        
-        # Build musl (static) binaries - these work on ANY Linux
-        if [[ "$ARCH" == "x86_64" ]]; then
-            build_agent "x86_64-unknown-linux-musl" "vstats-agent-linux-x86_64-musl"
-            build_server "x86_64-unknown-linux-musl" "vstats-server-linux-x86_64-musl"
-        elif [[ "$ARCH" == "aarch64" ]]; then
-            build_agent "aarch64-unknown-linux-musl" "vstats-agent-linux-aarch64-musl"
-            build_server "aarch64-unknown-linux-musl" "vstats-server-linux-aarch64-musl"
-        fi
-        
+        build_agent "linux" "$ARCH" "vstats-agent-linux-$ARCH" "$VERSION"
+        build_server "linux" "$ARCH" "vstats-server-linux-$ARCH" "$VERSION"
     elif [[ "$OS" == "darwin" ]]; then
-        # macOS builds
-        if [[ "$ARCH" == "x86_64" ]]; then
-            build_agent "x86_64-apple-darwin" "vstats-agent-darwin-x86_64"
-            build_server "x86_64-apple-darwin" "vstats-server-darwin-x86_64"
-        elif [[ "$ARCH" == "aarch64" ]]; then
-            build_agent "aarch64-apple-darwin" "vstats-agent-darwin-aarch64"
-            build_server "aarch64-apple-darwin" "vstats-server-darwin-aarch64"
-        fi
-        
-        # Universal binary (if both archs available)
-        # build_universal
+        build_agent "darwin" "$ARCH" "vstats-agent-darwin-$ARCH" "$VERSION"
+        build_server "darwin" "$ARCH" "vstats-server-darwin-$ARCH" "$VERSION"
+    elif [[ "$OS" == "freebsd" ]]; then
+        build_agent "freebsd" "$ARCH" "vstats-agent-freebsd-$ARCH" "$VERSION"
+        build_server "freebsd" "$ARCH" "vstats-server-freebsd-$ARCH" "$VERSION"
+    else
+        error "Unsupported OS: $OS"
     fi
 }
 
 # Build for specific target
 build_target() {
     local target="$1"
+    local version="${2:-dev}"
+    
+    mkdir -p "$RELEASE_DIR"
     
     case "$target" in
-        linux-x86_64|linux-x86_64-musl)
-            install_targets
-            build_agent "x86_64-unknown-linux-musl" "vstats-agent-linux-x86_64-musl"
-            build_server "x86_64-unknown-linux-musl" "vstats-server-linux-x86_64-musl"
+        linux-amd64)
+            build_agent "linux" "amd64" "vstats-agent-linux-amd64" "$version"
+            build_server "linux" "amd64" "vstats-server-linux-amd64" "$version"
             ;;
-        linux-aarch64|linux-aarch64-musl)
-            install_targets
-            build_agent "aarch64-unknown-linux-musl" "vstats-agent-linux-aarch64-musl"
-            build_server "aarch64-unknown-linux-musl" "vstats-server-linux-aarch64-musl"
+        linux-arm64)
+            build_agent "linux" "arm64" "vstats-agent-linux-arm64" "$version"
+            build_server "linux" "arm64" "vstats-server-linux-arm64" "$version"
             ;;
-        darwin-x86_64)
-            install_targets
-            build_agent "x86_64-apple-darwin" "vstats-agent-darwin-x86_64"
-            build_server "x86_64-apple-darwin" "vstats-server-darwin-x86_64"
+        darwin-amd64)
+            build_agent "darwin" "amd64" "vstats-agent-darwin-amd64" "$version"
+            build_server "darwin" "amd64" "vstats-server-darwin-amd64" "$version"
             ;;
-        darwin-aarch64)
-            install_targets
-            build_agent "aarch64-apple-darwin" "vstats-agent-darwin-aarch64"
-            build_server "aarch64-apple-darwin" "vstats-server-darwin-aarch64"
+        darwin-arm64)
+            build_agent "darwin" "arm64" "vstats-agent-darwin-arm64" "$version"
+            build_server "darwin" "arm64" "vstats-server-darwin-arm64" "$version"
+            ;;
+        windows-amd64)
+            build_agent "windows" "amd64" "vstats-agent-windows-amd64.exe" "$version"
+            build_server "windows" "amd64" "vstats-server-windows-amd64.exe" "$version"
+            ;;
+        freebsd-amd64)
+            build_agent "freebsd" "amd64" "vstats-agent-freebsd-amd64" "$version"
+            build_server "freebsd" "amd64" "vstats-server-freebsd-amd64" "$version"
+            ;;
+        freebsd-arm64)
+            build_agent "freebsd" "arm64" "vstats-agent-freebsd-arm64" "$version"
+            build_server "freebsd" "arm64" "vstats-server-freebsd-arm64" "$version"
             ;;
         *)
-            error "Unknown target: $target. Use: linux-x86_64, linux-aarch64, darwin-x86_64, darwin-aarch64"
+            error "Unknown target: $target"
             ;;
     esac
 }
 
 # Print usage
 usage() {
-    echo "Usage: $0 [OPTIONS]"
+    echo "Usage: $0 [OPTIONS] [VERSION]"
     echo ""
     echo "Options:"
-    echo "  --all           Build for all supported targets (requires cross-compilation)"
     echo "  --native        Build for current platform only (default)"
     echo "  --target TARGET Build for specific target"
-    echo "  --agent-only    Build only the agent"
-    echo "  --server-only   Build only the server"
     echo "  --clean         Clean build artifacts"
     echo ""
     echo "Targets:"
-    echo "  linux-x86_64    Linux x86_64 (static musl)"
-    echo "  linux-aarch64   Linux ARM64 (static musl)"
-    echo "  darwin-x86_64   macOS Intel"
-    echo "  darwin-aarch64  macOS Apple Silicon"
+    echo "  linux-amd64     Linux x86_64"
+    echo "  linux-arm64     Linux ARM64"
+    echo "  darwin-amd64    macOS Intel"
+    echo "  darwin-arm64    macOS Apple Silicon"
+    echo "  windows-amd64   Windows x86_64"
+    echo "  freebsd-amd64   FreeBSD x86_64"
+    echo "  freebsd-arm64   FreeBSD ARM64"
+    echo ""
+    echo "Version:"
+    echo "  Optional version string (default: dev)"
     echo ""
     echo "Output directory: $RELEASE_DIR"
+    echo ""
+    echo "Note: For CI/CD, use GitHub Actions workflow instead"
 }
 
 # Clean build artifacts
 clean() {
     info "Cleaning build artifacts..."
     rm -rf "$RELEASE_DIR"
-    cd "$PROJECT_ROOT/agent" && cargo clean
-    cd "$PROJECT_ROOT/server" && cargo clean
     success "Cleaned"
 }
 
 # Main
 main() {
-    detect_platform
-    
     case "$1" in
         --help|-h)
             usage
@@ -248,18 +201,21 @@ main() {
             exit 0
             ;;
         --target)
-            build_target "$2"
-            ;;
-        --all)
-            warn "Building all targets requires cross-compilation setup"
-            warn "For CI/CD, use GitHub Actions workflow instead"
-            build_native
+            if [ -z "$2" ]; then
+                error "Target required. Use --help for usage."
+            fi
+            build_target "$2" "$3"
             ;;
         --native|"")
-            build_native
+            build_native "$1"
             ;;
         *)
-            error "Unknown option: $1. Use --help for usage."
+            # Try as version
+            if [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ "$1" == "dev" ]]; then
+                build_native "$1"
+            else
+                error "Unknown option: $1. Use --help for usage."
+            fi
             ;;
     esac
     
@@ -269,4 +225,3 @@ main() {
 }
 
 main "$@"
-
