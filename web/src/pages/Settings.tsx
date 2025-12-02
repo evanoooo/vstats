@@ -367,7 +367,7 @@ export default function Settings() {
                   value={siteSettings.site_name}
                   onChange={(e) => setSiteSettings({ ...siteSettings, site_name: e.target.value })}
                   className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-blue-500/50"
-                  placeholder="xProb Dashboard"
+                  placeholder="vStats Dashboard"
                 />
               </div>
               <div>

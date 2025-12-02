@@ -1,11 +1,11 @@
 use chrono::{Duration, Utc};
 use rusqlite::{Connection, params};
 
-use crate::config::DB_FILE;
+use crate::config::get_db_path;
 use crate::types::SystemMetrics;
 
 pub fn init_database() -> rusqlite::Result<Connection> {
-    let conn = Connection::open(DB_FILE)?;
+    let conn = Connection::open(get_db_path())?;
     
     conn.execute_batch(r#"
         -- Raw metrics (keep for 24 hours)

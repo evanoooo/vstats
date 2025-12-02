@@ -43,7 +43,7 @@ export default function Login() {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 mb-4">
             <span className="text-3xl">⚡</span>
           </div>
-          <h1 className="text-2xl font-bold text-white">xProb Admin</h1>
+          <h1 className="text-2xl font-bold text-white">vStats Admin</h1>
           <p className="text-gray-500 text-sm mt-1">Enter password to continue</p>
         </div>
 
@@ -99,7 +99,7 @@ export default function Login() {
 
         {/* Help text */}
         <p className="text-center text-gray-600 text-xs mt-6">
-          Forgot password? Run <code className="text-gray-400">./xprob-server --reset-password</code>
+          Forgot password? Run <code className="text-gray-400">./vstats-server --reset-password</code>
         </p>
       </div>
     </div>

@@ -22,7 +22,7 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::ServeDir;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use crate::config::{load_config, reset_admin_password, DB_FILE};
+use crate::config::{get_config_path, get_db_path, load_config, reset_admin_password};
 use crate::db::{aggregate_daily, aggregate_hourly, cleanup_old_data, init_database};
 use crate::handlers::{
     add_server, change_password, delete_server, get_agent_script, get_all_metrics, get_history,
@@ -142,11 +142,13 @@ async fn main() {
     // Check for --reset-password argument
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|a| a == "--reset-password") {
+        let config_path = get_config_path();
         let new_password = reset_admin_password();
         println!("\n╔════════════════════════════════════════════════════════════════╗");
         println!("║                    🔑 PASSWORD RESET                           ║");
         println!("╠════════════════════════════════════════════════════════════════╣");
         println!("║  New admin password: {:<40} ║", new_password);
+        println!("║  Config file: {:<47} ║", config_path.display());
         println!("╚════════════════════════════════════════════════════════════════╝\n");
         return;
     }
@@ -158,7 +160,8 @@ async fn main() {
 
     // Initialize database
     let db = init_database().expect("Failed to initialize database");
-    tracing::info!("📦 Database initialized: {}", DB_FILE);
+    tracing::info!("📦 Database initialized: {}", get_db_path().display());
+    tracing::info!("⚙️  Config file: {}", get_config_path().display());
 
     let (config, initial_password) = load_config();
     
@@ -170,7 +173,7 @@ async fn main() {
         tracing::info!("║  Admin password: {:<44} ║", password);
         tracing::info!("║                                                                ║");
         tracing::info!("║  ⚠️  Save this password! It won't be shown again.              ║");
-        tracing::info!("║  To reset: ./xprob-server --reset-password                     ║");
+        tracing::info!("║  To reset: ./vstats-server --reset-password                    ║");
         tracing::info!("╚════════════════════════════════════════════════════════════════╝");
     }
     
@@ -327,7 +330,7 @@ async fn main() {
 
     tracing::info!("🚀 Server running on http://{}", addr);
     tracing::info!("📡 Agent WebSocket: ws://{}:{}/ws/agent", addr.ip(), port);
-    tracing::info!("🔑 Reset password: ./xprob-server --reset-password");
+    tracing::info!("🔑 Reset password: ./vstats-server --reset-password");
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();

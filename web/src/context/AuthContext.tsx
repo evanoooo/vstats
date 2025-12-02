@@ -11,7 +11,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem('xprob_token'));
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('vstats_token'));
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -24,7 +24,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           });
           if (!res.ok) {
             setToken(null);
-            localStorage.removeItem('xprob_token');
+            localStorage.removeItem('vstats_token');
           }
         } catch {
           // Keep token if server is unreachable
@@ -46,7 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (res.ok) {
         const data = await res.json();
         setToken(data.token);
-        localStorage.setItem('xprob_token', data.token);
+        localStorage.setItem('vstats_token', data.token);
         return true;
       }
       return false;
@@ -57,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     setToken(null);
-    localStorage.removeItem('xprob_token');
+    localStorage.removeItem('vstats_token');
   };
 
   return (

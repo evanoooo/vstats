@@ -320,7 +320,7 @@ export default function Dashboard() {
         <div className="flex items-center gap-4">
           <div>
             <h1 className="text-xl md:text-2xl font-bold text-white tracking-tight flex items-center gap-2">
-              <span className="text-emerald-500">⚡</span> {siteSettings.site_name || 'xProb Dashboard'}
+              <span className="text-emerald-500">⚡</span> {siteSettings.site_name || 'vStats Dashboard'}
             </h1>
             <p className="text-gray-500 text-xs mt-0.5 font-mono">{siteSettings.site_description || 'Real-time Server Monitoring'}</p>
           </div>
@@ -427,7 +427,7 @@ export default function Dashboard() {
       {/* Footer */}
       <footer className="text-center mt-auto pt-6 pb-2">
         <p className="text-gray-600 text-[10px] font-mono">
-          xProb Monitor v0.3.0 • Powered by vStats
+          vStats Monitor v0.3.0
         </p>
       </footer>
     </div>

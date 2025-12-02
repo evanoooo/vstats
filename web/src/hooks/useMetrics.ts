@@ -39,7 +39,7 @@ interface ServerMetricsUpdate {
 }
 
 const defaultSiteSettings: SiteSettings = {
-  site_name: 'xProb Dashboard',
+  site_name: 'vStats Dashboard',
   site_description: 'Real-time Server Monitoring',
   social_links: []
 };

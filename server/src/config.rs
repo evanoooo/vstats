@@ -3,8 +3,26 @@ use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 use std::{fs, path::PathBuf};
 
-pub const CONFIG_FILE: &str = "vstats-config.json";
-pub const DB_FILE: &str = "vstats.db";
+pub const CONFIG_FILENAME: &str = "vstats-config.json";
+pub const DB_FILENAME: &str = "vstats.db";
+
+/// Get the directory where the executable is located
+fn get_exe_dir() -> PathBuf {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// Get the full path to the config file (in the same directory as the executable)
+pub fn get_config_path() -> PathBuf {
+    get_exe_dir().join(CONFIG_FILENAME)
+}
+
+/// Get the full path to the database file (in the same directory as the executable)
+pub fn get_db_path() -> PathBuf {
+    get_exe_dir().join(DB_FILENAME)
+}
 
 // Global JWT secret (initialized at startup from config)
 static JWT_SECRET: OnceLock<String> = OnceLock::new();
@@ -83,7 +101,7 @@ impl Default for AppConfig {
             jwt_secret: generate_random_string(64),
             servers: vec![],
             site_settings: SiteSettings {
-                site_name: "xProb Dashboard".to_string(),
+                site_name: "vStats Dashboard".to_string(),
                 site_description: "Real-time Server Monitoring".to_string(),
                 social_links: vec![],
             },
@@ -101,7 +119,7 @@ impl AppConfig {
             jwt_secret: generate_random_string(64),
             servers: vec![],
             site_settings: SiteSettings {
-                site_name: "xProb Dashboard".to_string(),
+                site_name: "vStats Dashboard".to_string(),
                 site_description: "Real-time Server Monitoring".to_string(),
                 social_links: vec![],
             },
@@ -120,7 +138,7 @@ impl AppConfig {
 /// Load config, returns (config, Option<initial_password>)
 /// If this is first run, returns the generated password
 pub fn load_config() -> (AppConfig, Option<String>) {
-    let path = PathBuf::from(CONFIG_FILE);
+    let path = get_config_path();
     if path.exists() {
         let content = fs::read_to_string(&path).unwrap_or_default();
         let mut config: AppConfig = serde_json::from_str(&content).unwrap_or_default();
@@ -149,7 +167,7 @@ pub fn load_config() -> (AppConfig, Option<String>) {
 
 /// Reset password and return the new password
 pub fn reset_admin_password() -> String {
-    let path = PathBuf::from(CONFIG_FILE);
+    let path = get_config_path();
     let mut config = if path.exists() {
         let content = fs::read_to_string(&path).unwrap_or_default();
         serde_json::from_str(&content).unwrap_or_default()
@@ -163,7 +181,8 @@ pub fn reset_admin_password() -> String {
 }
 
 pub fn save_config(config: &AppConfig) {
+    let path = get_config_path();
     let content = serde_json::to_string_pretty(config).unwrap();
-    fs::write(CONFIG_FILE, content).ok();
+    fs::write(&path, content).ok();
 }
 
