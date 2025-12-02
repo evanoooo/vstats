@@ -60,24 +60,20 @@ detect_system() {
     OS=$(uname -s | tr '[:upper:]' '[:lower:]')
     ARCH=$(uname -m)
     
+    # Map architecture names to Go naming convention
     case "$ARCH" in
-        x86_64|amd64) ARCH="x86_64" ;;
-        aarch64|arm64) ARCH="aarch64" ;;
-        armv7l) ARCH="armv7" ;;
+        x86_64|amd64) ARCH="amd64" ;;
+        aarch64|arm64) ARCH="arm64" ;;
+        armv7l) ARCH="arm" ;;
         *) error "Unsupported architecture: $ARCH" ;;
     esac
     
     case "$OS" in
         linux) OS="linux" ;;
         darwin) OS="darwin" ;;
+        freebsd) OS="freebsd" ;;
         *) error "Unsupported OS: $OS" ;;
     esac
-    
-    # For Linux, always use musl (static) binaries for maximum compatibility
-    # musl binaries work on ANY Linux regardless of glibc version
-    if [ "$OS" = "linux" ]; then
-        LIBC="musl"
-    fi
     
     info "Detected: $OS-$ARCH"
 }
@@ -141,11 +137,8 @@ setup_dirs() {
 download_binary() {
     info "Downloading vStats server ${LATEST_VERSION}..."
     
-    # Construct download URL
+    # Construct download URL (Go binary naming: vstats-server-{os}-{arch})
     BINARY_NAME="vstats-server-${OS}-${ARCH}"
-    if [ "$OS" = "linux" ]; then
-        BINARY_NAME="vstats-server-${OS}-${ARCH}-${LIBC}"
-    fi
     
     DOWNLOAD_URL="${GITHUB_DOWNLOAD}/${LATEST_VERSION}/${BINARY_NAME}"
     
@@ -155,14 +148,7 @@ download_binary() {
         chmod +x "$INSTALL_DIR/vstats-server"
         success "Downloaded binary successfully"
     else
-        # Try alternative naming
-        DOWNLOAD_URL="${GITHUB_DOWNLOAD}/${LATEST_VERSION}/vstats-server-${OS}-${ARCH}"
-        if curl -fsSL "$DOWNLOAD_URL" -o "$INSTALL_DIR/vstats-server" 2>/dev/null; then
-            chmod +x "$INSTALL_DIR/vstats-server"
-            success "Downloaded binary successfully"
-        else
-            error "Failed to download binary. Please check https://github.com/${GITHUB_REPO}/releases"
-        fi
+        error "Failed to download binary. Please check https://github.com/${GITHUB_REPO}/releases"
     fi
 }
 

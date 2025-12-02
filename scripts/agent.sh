@@ -116,26 +116,22 @@ detect_system() {
     OS=$(uname -s | tr '[:upper:]' '[:lower:]')
     ARCH=$(uname -m)
     
+    # Map architecture names to Go naming convention
     case "$ARCH" in
-        x86_64|amd64) ARCH="x86_64" ;;
-        aarch64|arm64) ARCH="aarch64" ;;
+        x86_64|amd64) ARCH="amd64" ;;
+        aarch64|arm64) ARCH="arm64" ;;
         *) error "Unsupported architecture: $ARCH" ;;
     esac
     
     case "$OS" in
         linux) OS="linux" ;;
         darwin) OS="darwin" ;;
+        freebsd) OS="freebsd" ;;
         *) error "Unsupported OS: $OS" ;;
     esac
     
-    # For Linux, always prefer musl (static) binaries for maximum compatibility
-    # musl binaries work on ANY Linux regardless of glibc version
-    if [ "$OS" = "linux" ]; then
-        # Always use musl for better compatibility
-        BINARY_NAME="vstats-agent-${OS}-${ARCH}-musl"
-    else
-        BINARY_NAME="vstats-agent-${OS}-${ARCH}"
-    fi
+    # Go binary naming: vstats-agent-{os}-{arch}
+    BINARY_NAME="vstats-agent-${OS}-${ARCH}"
     
     info "Detected: $OS-$ARCH"
 }
