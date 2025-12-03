@@ -56,10 +56,8 @@ interface RemoteServer {
   token?: string;
   ip?: string;
   // Extended metadata
-  price?: {
-    amount: string;
-    period: 'month' | 'year';
-  };
+  price_amount?: string;
+  price_period?: string;
   purchase_date?: string;
   remaining_value?: string;
   tip_badge?: string;
@@ -517,8 +515,8 @@ Invoke-WebRequest -Uri "${baseUrl}/agent.ps1" -OutFile "agent.ps1"
       location: server.location,
       provider: server.provider,
       tag: server.tag || '',
-      price_amount: server.price?.amount || '',
-      price_period: server.price?.period || 'month',
+      price_amount: server.price_amount || '',
+      price_period: (server.price_period as 'month' | 'year') || 'month',
       purchase_date: server.purchase_date || '',
       tip_badge: server.tip_badge || ''
     });
@@ -546,12 +544,10 @@ Invoke-WebRequest -Uri "${baseUrl}/agent.ps1" -OutFile "agent.ps1"
         tag: editForm.tag.trim(),
       };
       
-      // Add price if provided
+      // Add price fields if provided
       if (editForm.price_amount.trim()) {
-        updateData.price = {
-          amount: editForm.price_amount.trim(),
-          period: editForm.price_period
-        };
+        updateData.price_amount = editForm.price_amount.trim();
+        updateData.price_period = editForm.price_period;
       }
       
       // Add other optional fields
