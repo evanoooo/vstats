@@ -275,6 +275,8 @@ body {
   -webkit-backdrop-filter: blur(24px);
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease,
     background-color 0.2s ease;
+  height: 100%;
+  min-height: 280px;
 }
 
 /* 浅色卡片 */
@@ -1532,9 +1534,11 @@ button:active {
 .vps-footer-row-price {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
+  gap: 0.5rem;
+  flex-wrap: nowrap;
   font-size: 9px;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .vps-price {
@@ -1590,9 +1594,11 @@ button:active {
 .vps-footer-row-status {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
+  gap: 0.5rem;
+  flex-wrap: nowrap;
   font-size: 9px;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .vps-uptime-item {
@@ -1622,8 +1628,8 @@ button:active {
 .vps-latency {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
+  gap: 0.5rem;
+  flex-wrap: nowrap;
 }
 
 .vps-latency-item {

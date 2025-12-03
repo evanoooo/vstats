@@ -88,12 +88,44 @@ function SocialLinks({ links, className = '', isDark }: { links: SocialLink[]; c
 }
 
 // Helper functions
+// Extract currency symbol from price string (e.g., "$89.99" -> "$", "¥199" -> "¥")
+const extractCurrency = (amount: string): string => {
+  const match = amount.match(/^[^\d]+/);
+  return match ? match[0] : '$';
+};
+
+// Format price display consistently
+const formatPrice = (amount: string): string => {
+  const currency = extractCurrency(amount);
+  const numMatch = amount.match(/[\d.]+/);
+  if (!numMatch) return amount;
+  const num = parseFloat(numMatch[0]);
+  return `${currency}${Math.round(num)}`;
+};
+
+// Format purchase date to show only year
+const formatPurchaseYear = (dateStr: string): string => {
+  try {
+    const date = new Date(dateStr);
+    return date.getFullYear().toString();
+  } catch {
+    return dateStr;
+  }
+};
+
+// Format latency to integer
+const formatLatency = (ms: number | null): string => {
+  if (ms === null) return 'N/A';
+  return `${Math.round(ms)}ms`;
+};
+
 // Calculate remaining value based on price and purchase date
 const calculateRemainingValue = (price?: { amount: string; period: 'month' | 'year' }, purchaseDate?: string): string | null => {
   if (!price || !purchaseDate) return null;
   
   try {
-    // Extract numeric value from price string (e.g., "$89.99" -> 89.99)
+    // Extract currency symbol and numeric value
+    const currency = extractCurrency(price.amount);
     const priceMatch = price.amount.match(/[\d.]+/);
     if (!priceMatch) return null;
     
@@ -116,7 +148,7 @@ const calculateRemainingValue = (price?: { amount: string; period: 'month' | 'ye
       const remainingValue = priceValue * remainingMonths;
       
       if (remainingValue <= 0) return null;
-      return `$${remainingValue.toFixed(2)}`;
+      return `${currency}${Math.round(remainingValue)}`;
     } else if (price.period === 'year') {
       // Yearly billing: calculate based on days in year
       const daysInYear = 365;
@@ -125,7 +157,7 @@ const calculateRemainingValue = (price?: { amount: string; period: 'month' | 'ye
       const remainingValue = priceValue * remainingYears;
       
       if (remainingValue <= 0) return null;
-      return `$${remainingValue.toFixed(2)}`;
+      return `${currency}${Math.round(remainingValue)}`;
     }
   } catch (e) {
     console.error('Failed to calculate remaining value', e);
@@ -350,7 +382,7 @@ function VpsGridCard({ server, onClick, isDark }: { server: ServerState; onClick
           <div className="vps-footer-row-price">
             {config.price && (
               <div className={`vps-price vps-price--${themeClass}`}>
-                <span className="vps-price-amount">{config.price.amount}</span>
+                <span className="vps-price-amount">{formatPrice(config.price.amount)}</span>
                 <span className="vps-price-period">/{config.price.period === 'month' ? '月' : '年'}</span>
               </div>
             )}
@@ -363,7 +395,7 @@ function VpsGridCard({ server, onClick, isDark }: { server: ServerState; onClick
             {config.purchase_date && (
               <div className={`vps-footer-info-item vps-footer-info-item--${themeClass}`}>
                 <span className="vps-footer-info-label">购买</span>
-                <span className="vps-footer-info-value">{config.purchase_date}</span>
+                <span className="vps-footer-info-value">{formatPurchaseYear(config.purchase_date)}</span>
               </div>
             )}
           </div>
@@ -379,7 +411,7 @@ function VpsGridCard({ server, onClick, isDark }: { server: ServerState; onClick
                 <div key={idx} className={`vps-latency-item vps-latency-item--${themeClass}`}>
                   <span className="vps-latency-label">{target.name}</span>
                   <span className={`vps-latency-value vps-latency-value--${themeClass}`}>
-                    {target.latency_ms !== null ? `${target.latency_ms}ms` : 'N/A'}
+                    {formatLatency(target.latency_ms)}
                   </span>
                 </div>
               ))}
@@ -562,7 +594,7 @@ function VpsListCard({ server, onClick, isDark }: { server: ServerState; onClick
               <div key={idx} className="vps-list-net-item">
                 <div className={`vps-list-net-label vps-list-net-label--${themeClass}`}>{target.name}</div>
                 <div className={`vps-list-net-value vps-list-net-value--${themeClass}`}>
-                  {target.latency_ms !== null ? `${target.latency_ms}ms` : 'N/A'}
+                  {formatLatency(target.latency_ms)}
                 </div>
               </div>
             ))}
@@ -576,7 +608,7 @@ function VpsListCard({ server, onClick, isDark }: { server: ServerState; onClick
           <div className="vps-footer-row-price">
             {config.price && (
               <div className={`vps-price vps-price--${themeClass}`}>
-                <span className="vps-price-amount">{config.price.amount}</span>
+                <span className="vps-price-amount">{formatPrice(config.price.amount)}</span>
                 <span className="vps-price-period">/{config.price.period === 'month' ? '月' : '年'}</span>
               </div>
             )}
@@ -589,7 +621,7 @@ function VpsListCard({ server, onClick, isDark }: { server: ServerState; onClick
             {config.purchase_date && (
               <div className={`vps-footer-info-item vps-footer-info-item--${themeClass}`}>
                 <span className="vps-footer-info-label">购买</span>
-                <span className="vps-footer-info-value">{config.purchase_date}</span>
+                <span className="vps-footer-info-value">{formatPurchaseYear(config.purchase_date)}</span>
               </div>
             )}
           </div>
@@ -605,7 +637,7 @@ function VpsListCard({ server, onClick, isDark }: { server: ServerState; onClick
                 <div key={idx} className={`vps-latency-item vps-latency-item--${themeClass}`}>
                   <span className="vps-latency-label">{target.name}</span>
                   <span className={`vps-latency-value vps-latency-value--${themeClass}`}>
-                    {target.latency_ms !== null ? `${target.latency_ms}ms` : 'N/A'}
+                    {formatLatency(target.latency_ms)}
                   </span>
                 </div>
               ))}
