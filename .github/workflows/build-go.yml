@@ -350,12 +350,18 @@ jobs:
         run: |
           # Merge web build with docs
           mkdir -p pages
-          # Copy docs first (if exists)
+          # Copy docs first (if exists) - this includes CNAME file
           if [ -d "docs" ]; then
             cp -r docs/* pages/ || true
           fi
-          # Copy web build (overwrites if conflicts)
+          # Copy web build (overwrites if conflicts, but preserve CNAME)
+          if [ -f "pages/CNAME" ]; then
+            cp pages/CNAME pages/CNAME.bak
+          fi
           cp -r web-dist/* pages/
+          if [ -f "pages/CNAME.bak" ]; then
+            mv pages/CNAME.bak pages/CNAME
+          fi
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

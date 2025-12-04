@@ -1,4 +1,4 @@
-import { useState, type ReactElement } from 'react';
+import { useState, useEffect, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useServerManager, formatSpeed, formatUptime, type ServerState } from '../hooks/useMetrics';
 import { getOsIcon } from '../components/Icons';
@@ -721,6 +721,22 @@ export default function Dashboard() {
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     return (localStorage.getItem('vstats-view-mode') as ViewMode) || 'grid';
   });
+  const [serverVersion, setServerVersion] = useState<string>('');
+
+  useEffect(() => {
+    const fetchServerVersion = async () => {
+      try {
+        const res = await fetch('/api/version');
+        if (res.ok) {
+          const data = await res.json();
+          setServerVersion(data.version || '');
+        }
+      } catch (e) {
+        console.error('Failed to fetch server version', e);
+      }
+    };
+    fetchServerVersion();
+  }, []);
 
   const toggleViewMode = () => {
     const newMode = viewMode === 'list' ? 'grid' : 'list';
@@ -888,7 +904,17 @@ export default function Dashboard() {
         {/* Footer */}
         <footer className="text-center mt-auto pt-6 pb-2">
           <p className={`text-[10px] font-mono ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
-            vStats Monitor v0.3.0
+            vStats Monitor {serverVersion && `v${serverVersion}`}
+            {serverVersion && ' · '}
+            Made with <span className="text-red-500">❤️</span> by{' '}
+            <a 
+              href="https://vstats.zsoft.cc" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className={`hover:underline ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
+            >
+              vstats.zsoft.cc
+            </a>
           </p>
         </footer>
       </div>
