@@ -152,7 +152,7 @@ export function useServerManager() {
       if (m.m !== undefined) {
         updated.metrics.memory = { ...updated.metrics.memory, usage_percent: m.m };
       }
-      if (m.d !== undefined && updated.metrics.disks[0]) {
+      if (m.d !== undefined && updated.metrics.disks?.[0]) {
         updated.metrics.disks = [{ ...updated.metrics.disks[0], usage_percent: m.d }];
       }
       if (m.rx !== undefined || m.tx !== undefined) {

@@ -225,13 +225,13 @@ function VpsGridCard({ server, onClick, isDark }: { server: ServerState; onClick
     );
   }
 
-  const diskUsage = metrics.disks[0]?.usage_percent || 0;
-  const totalDisk = metrics.disks.reduce((acc, d) => acc + d.total, 0);
+  const diskUsage = metrics.disks?.[0]?.usage_percent || 0;
+  const totalDisk = (metrics.disks || []).reduce((acc, d) => acc + d.total, 0);
   const memoryModules = metrics.memory.modules;
   const memoryType = memoryModules?.[0]?.mem_type;
   const memorySpeed = memoryModules?.[0]?.speed;
   const memoryDetail = `${formatDiskSize(metrics.memory.total)}${memoryType ? ` · ${memoryType}` : ''}${memorySpeed ? `-${memorySpeed}MHz` : ''}`;
-  const diskDetail = `${metrics.disks[0]?.disk_type || 'Storage'} · ${formatDiskSize(totalDisk)} total`;
+  const diskDetail = `${metrics.disks?.[0]?.disk_type || 'Storage'} · ${formatDiskSize(totalDisk)} total`;
   
   const networkMbps = ((speed.rx_sec + speed.tx_sec) * 8) / 1_000_000;
   const networkValue = Math.min(100, Math.round(networkMbps));
@@ -451,7 +451,7 @@ function VpsListCard({ server, onClick, isDark }: { server: ServerState; onClick
     );
   }
 
-  const totalDisk = metrics.disks.reduce((acc, d) => acc + d.total, 0);
+  const totalDisk = (metrics.disks || []).reduce((acc, d) => acc + d.total, 0);
 
   // Tip badge mapping
   const getTipBadgeClass = (tag?: string) => {
@@ -492,8 +492,8 @@ function VpsListCard({ server, onClick, isDark }: { server: ServerState; onClick
   const remainingValue = calculateRemainingValue(config.price, config.purchase_date);
   
   // Calculate metrics details (same as Grid card)
-  const diskUsage = metrics.disks[0]?.usage_percent || 0;
-  const diskDetail = `${metrics.disks[0]?.disk_type || 'SSD'} · ${formatDiskSize(totalDisk)} total`;
+  const diskUsage = metrics.disks?.[0]?.usage_percent || 0;
+  const diskDetail = `${metrics.disks?.[0]?.disk_type || 'SSD'} · ${formatDiskSize(totalDisk)} total`;
   const memoryDetail = `${formatDiskSize(metrics.memory.total)}`;
   const networkValue = Math.min(100, Math.round(((speed.rx_sec + speed.tx_sec) * 8) / 1_000_000));
   const networkSubtitle = `↑ ${formatSpeed(speed.tx_sec)} · ↓ ${formatSpeed(speed.rx_sec)}`;
