@@ -1,0 +1,47 @@
+# Dockerfile for pre-built binaries (used in CI/CD)
+# This dockerfile expects the binary and web assets to be copied into the build context
+
+FROM alpine:latest
+
+ARG TARGETARCH
+
+WORKDIR /app
+
+# Install ca-certificates for HTTPS and tzdata for timezone support
+RUN apk add --no-cache ca-certificates tzdata
+
+# Create non-root user
+RUN addgroup -g 1000 vstats && \
+    adduser -D -u 1000 -G vstats vstats
+
+# Copy pre-built binary (architecture-specific)
+COPY vstats-server-linux-${TARGETARCH} /app/vstats-server
+RUN chmod +x /app/vstats-server
+
+# Copy pre-built frontend
+COPY web-dist /app/web/dist
+
+# Set environment variable for web directory
+ENV VSTATS_WEB_DIR=/app/web/dist
+
+# Create directories for config and database
+RUN mkdir -p /app/data && \
+    chown -R vstats:vstats /app
+
+# Set default environment variables for data paths
+ENV VSTATS_CONFIG_PATH=/app/data/vstats-config.json
+ENV VSTATS_DB_PATH=/app/data/vstats.db
+
+# Switch to non-root user
+USER vstats
+
+# Expose default port
+EXPOSE 3001
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD /app/vstats-server version > /dev/null 2>&1 || exit 1
+
+# Run the server
+CMD ["/app/vstats-server"]
+
