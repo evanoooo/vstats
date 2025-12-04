@@ -120,7 +120,7 @@ function HistoryChart({ serverId }: { serverId: string }) {
         const res = await fetch(`/api/history/${serverId}?range=${range}`);
         if (!res.ok) throw new Error('Failed to fetch history');
         const json: HistoryResponse = await res.json();
-        setData(json.data);
+        setData(json.data || []);
         setPingTargets(json.ping_targets || []);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Unknown error');
