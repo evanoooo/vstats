@@ -37,7 +37,7 @@ func main() {
 			fmt.Printf("║  Config file: %-47s ║\n", GetConfigPath())
 			fmt.Println("╠════════════════════════════════════════════════════════════════╣")
 			fmt.Println("║  ⚠️  If server is running, restart it to use new password     ║")
-			fmt.Println("╚════════════════════════════════════════════════════════════════╝\n")
+			fmt.Println("╚════════════════════════════════════════════════════════════════╝")
 			return
 		}
 	}
@@ -82,6 +82,13 @@ func main() {
 		DB:               db,
 	}
 
+	// Initialize local metrics collector with ping targets
+	localCollector := GetLocalCollector()
+	if len(config.ProbeSettings.PingTargets) > 0 {
+		localCollector.SetPingTargets(config.ProbeSettings.PingTargets)
+		fmt.Printf("📡 Ping targets configured: %d targets\n", len(config.ProbeSettings.PingTargets))
+	}
+
 	// Start background tasks
 	go metricsBroadcastLoop(state)
 	go aggregationLoop(state, db)
@@ -112,6 +119,7 @@ func main() {
 	})
 	r.GET("/api/servers", state.GetServers)
 	r.GET("/api/groups", state.GetGroups)
+	r.GET("/api/dimensions", state.GetDimensions) // Public: get all dimensions for grouping
 	r.GET("/api/settings/site", state.GetSiteSettings)
 	r.POST("/api/auth/login", state.Login)
 	r.GET("/api/auth/verify", AuthMiddleware(), state.VerifyToken)
@@ -157,6 +165,14 @@ func main() {
 		protected.POST("/api/groups", state.AddGroup)
 		protected.PUT("/api/groups/:id", state.UpdateGroup)
 		protected.DELETE("/api/groups/:id", state.DeleteGroup)
+		// Dimension management (GET is public, mutations are protected)
+		protected.POST("/api/dimensions", state.AddDimension)
+		protected.PUT("/api/dimensions/:id", state.UpdateDimension)
+		protected.DELETE("/api/dimensions/:id", state.DeleteDimension)
+		// Dimension options management
+		protected.POST("/api/dimensions/:dimension_id/options", state.AddOption)
+		protected.PUT("/api/dimensions/:dimension_id/options/:option_id", state.UpdateOption)
+		protected.DELETE("/api/dimensions/:dimension_id/options/:option_id", state.DeleteOption)
 	}
 
 	// Static file serving
@@ -172,11 +188,15 @@ func main() {
 		})
 		r.NoRoute(func(c *gin.Context) {
 			// For SPA, serve index.html for all non-API routes
-			if !strings.HasPrefix(c.Request.URL.Path, "/api") &&
-				!strings.HasPrefix(c.Request.URL.Path, "/ws") &&
-				!strings.HasPrefix(c.Request.URL.Path, "/agent.sh") &&
-				!strings.HasPrefix(c.Request.URL.Path, "/logos") &&
-				!strings.HasPrefix(c.Request.URL.Path, "/assets") {
+			path := c.Request.URL.Path
+			if !strings.HasPrefix(path, "/api") &&
+				!strings.HasPrefix(path, "/ws") &&
+				!strings.HasPrefix(path, "/agent.sh") &&
+				!strings.HasPrefix(path, "/agent.ps1") &&
+				!strings.HasPrefix(path, "/agent-upgrade.ps1") &&
+				!strings.HasPrefix(path, "/agent-uninstall.ps1") &&
+				!strings.HasPrefix(path, "/logos") &&
+				!strings.HasPrefix(path, "/assets") {
 				c.File(webDir + "/index.html")
 			} else {
 				c.Status(404)
@@ -243,7 +263,7 @@ func showDiagnostics() {
 		}
 	}
 
-	fmt.Println("╚════════════════════════════════════════════════════════════════╝\n")
+	fmt.Println("╚════════════════════════════════════════════════════════════════╝")
 }
 
 func fileExists(path string) bool {

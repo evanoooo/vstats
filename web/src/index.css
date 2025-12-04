@@ -163,9 +163,9 @@ body {
   color: var(--text-main-dark);
 }
 
-/* 居中布局 - 1280px for 4-column grid */
+/* 居中布局 - 1120px matching design */
 .vps-page-inner {
-  max-width: 1280px;
+  max-width: 1120px;
   margin: 0 auto;
   position: relative;
 }

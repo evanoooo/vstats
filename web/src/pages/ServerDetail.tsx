@@ -1,9 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useServerManager, formatBytes, formatSpeed, formatUptime } from '../hooks/useMetrics';
 import { getOsIcon, getProviderIcon } from '../components/Icons';
 import { getProviderLogo, getDistributionLogo, LogoImage } from '../utils/logoUtils';
 import type { HistoryPoint, HistoryResponse, PingHistoryTarget } from '../types';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Area,
+  AreaChart,
+  Legend,
+} from 'recharts';
 
 // Convert ISO 3166-1 alpha-2 country code to flag emoji
 // Each letter becomes a regional indicator symbol (A=🇦, B=🇧, etc.)
@@ -43,6 +55,53 @@ function StatCard({ label, value, subValue, color = 'gray' }: { label: string; v
 // History Chart Component
 type TimeRange = '1h' | '24h' | '7d' | '30d' | '1y';
 type HistoryTab = 'overview' | 'cpu' | 'memory' | 'disk' | 'network' | 'ping';
+
+// Color palette for charts
+const chartColors = {
+  blue: { stroke: '#3b82f6', fill: '#3b82f6', gradient: ['#3b82f6', '#06b6d4'] },
+  purple: { stroke: '#a855f7', fill: '#a855f7', gradient: ['#a855f7', '#ec4899'] },
+  amber: { stroke: '#f59e0b', fill: '#f59e0b', gradient: ['#f59e0b', '#ef4444'] },
+  cyan: { stroke: '#06b6d4', fill: '#06b6d4', gradient: ['#06b6d4', '#3b82f6'] },
+  rose: { stroke: '#f43f5e', fill: '#f43f5e', gradient: ['#f43f5e', '#a855f7'] },
+  emerald: { stroke: '#10b981', fill: '#10b981', gradient: ['#10b981', '#06b6d4'] },
+};
+
+// Custom tooltip component
+const CustomTooltip = ({ 
+  active, 
+  payload, 
+  label, 
+  formatValue,
+  labelFormatter,
+}: {
+  active?: boolean;
+  payload?: Array<{ value: number; name: string; color: string }>;
+  label?: string;
+  formatValue?: (v: number) => string;
+  labelFormatter?: (label: string) => string;
+}) => {
+  if (!active || !payload?.length) return null;
+  
+  return (
+    <div className="bg-gray-900/95 backdrop-blur-sm border border-white/10 rounded-lg p-3 shadow-xl">
+      <p className="text-xs text-gray-400 mb-2 font-mono">
+        {labelFormatter ? labelFormatter(label || '') : label}
+      </p>
+      {payload.map((entry, index) => (
+        <div key={index} className="flex items-center gap-2">
+          <span 
+            className="w-2 h-2 rounded-full" 
+            style={{ backgroundColor: entry.color }}
+          />
+          <span className="text-xs text-gray-300">{entry.name}:</span>
+          <span className="text-sm font-mono font-semibold text-white">
+            {formatValue ? formatValue(entry.value) : entry.value}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+};
 
 function HistoryChart({ serverId }: { serverId: string }) {
   const [range, setRange] = useState<TimeRange>('24h');
@@ -92,23 +151,18 @@ function HistoryChart({ serverId }: { serverId: string }) {
     { value: 'ping', label: 'Ping', color: 'rose' },
   ];
 
-  // Sample data for display (max 60 points for smooth rendering)
-  const sampleRate = Math.max(1, Math.floor(data.length / 60));
-  const sampledData = data.filter((_, i) => i % sampleRate === 0);
+  // Sample data for display (max 120 points for smooth line rendering)
+  const sampleRate = Math.max(1, Math.floor(data.length / 120));
+  const sampledData = useMemo(() => 
+    data.filter((_, i) => i % sampleRate === 0).map((point, index) => ({
+      ...point,
+      index,
+      formattedTime: formatTimeForChart(point.timestamp),
+    })),
+    [data, sampleRate]
+  );
 
-  // Calculate time labels for X axis (5 labels)
-  const getTimeLabels = () => {
-    if (sampledData.length < 2) return [];
-    const labels: { index: number; label: string }[] = [];
-    const step = Math.floor((sampledData.length - 1) / 4);
-    for (let i = 0; i <= 4; i++) {
-      const idx = Math.min(i * step, sampledData.length - 1);
-      labels.push({ index: idx, label: formatTime(sampledData[idx].timestamp) });
-    }
-    return labels;
-  };
-
-  const formatTime = (timestamp: string) => {
+  function formatTimeForChart(timestamp: string) {
     const date = new Date(timestamp);
     if (range === '1h' || range === '24h') {
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -117,9 +171,19 @@ function HistoryChart({ serverId }: { serverId: string }) {
       return date.toLocaleDateString([], { month: 'short', year: '2-digit' });
     }
     return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-  };
+  }
 
-  const formatBytes = (bytes: number) => {
+  function formatFullTime(timestamp: string) {
+    const date = new Date(timestamp);
+    return date.toLocaleString([], { 
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit', 
+      minute: '2-digit'
+    });
+  }
+
+  const formatBytesLocal = (bytes: number) => {
     if (bytes === 0) return '0 B';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -127,61 +191,277 @@ function HistoryChart({ serverId }: { serverId: string }) {
     return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
   };
 
-  // Single chart component with X axis
-  const Chart = ({ 
-    data: chartData, 
-    color, 
-    label, 
-    getValue, 
+  // Single Line Chart Component
+  const SingleLineChart = ({ 
+    dataKey, 
+    color,
+    label,
     formatValue,
-    maxValue 
+    maxValue,
+    showArea = true,
   }: { 
-    data: HistoryPoint[]; 
-    color: string; 
-    label: string; 
-    getValue: (d: HistoryPoint) => number;
+    dataKey: string;
+    color: keyof typeof chartColors;
+    label: string;
     formatValue: (v: number) => string;
     maxValue?: number;
+    showArea?: boolean;
   }) => {
-    const values = chartData.map(getValue);
-    const max = maxValue ?? Math.max(...values, 1);
+    const colorSet = chartColors[color];
+    const values = sampledData.map(d => d[dataKey as keyof typeof d] as number);
     const avg = values.reduce((a, b) => a + b, 0) / values.length;
-    const timeLabels = getTimeLabels();
-    
-    const colorClasses: Record<string, { bg: string; hover: string; text: string }> = {
-      blue: { bg: 'bg-blue-500', hover: 'hover:bg-blue-400', text: 'text-blue-400' },
-      purple: { bg: 'bg-purple-500', hover: 'hover:bg-purple-400', text: 'text-purple-400' },
-      amber: { bg: 'bg-amber-500', hover: 'hover:bg-amber-400', text: 'text-amber-400' },
-      cyan: { bg: 'bg-cyan-500', hover: 'hover:bg-cyan-400', text: 'text-cyan-400' },
-      rose: { bg: 'bg-rose-500', hover: 'hover:bg-rose-400', text: 'text-rose-400' },
-      emerald: { bg: 'bg-emerald-500', hover: 'hover:bg-emerald-400', text: 'text-emerald-400' },
-    };
-    const c = colorClasses[color] || colorClasses.blue;
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const gradientId = `gradient-${color}-${dataKey}`;
 
     return (
       <div className="relative">
-        <div className="flex items-center justify-between mb-2">
-          <span className={`text-xs ${c.text} font-medium`}>{label}</span>
-          <span className="text-xs text-gray-500 font-mono">
-            avg: {formatValue(avg)}
-          </span>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <span 
+              className="w-3 h-3 rounded-full" 
+              style={{ backgroundColor: colorSet.stroke }}
+            />
+            <span className="text-sm font-medium text-white">{label}</span>
+          </div>
+          <div className="flex gap-4 text-xs">
+            <span className="text-gray-500">min: <span className="text-emerald-400 font-mono">{formatValue(min)}</span></span>
+            <span className="text-gray-500">avg: <span style={{ color: colorSet.stroke }} className="font-mono">{formatValue(avg)}</span></span>
+            <span className="text-gray-500">max: <span className="text-amber-400 font-mono">{formatValue(max)}</span></span>
+          </div>
         </div>
-        <div className="relative">
-          <div className="h-20 flex items-end gap-px bg-white/[0.02] rounded-lg p-2 overflow-hidden">
-            {chartData.map((point, i) => (
-              <div
-                key={i}
-                className={`flex-1 min-w-[2px] ${c.bg} rounded-t transition-all ${c.hover} cursor-pointer`}
-                style={{ height: `${Math.max((getValue(point) / max) * 100, 1)}%` }}
-                title={`${formatTime(point.timestamp)}: ${formatValue(getValue(point))}`}
+        <div className="h-48 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={sampledData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+              <defs>
+                <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={colorSet.gradient[0]} stopOpacity={0.3} />
+                  <stop offset="100%" stopColor={colorSet.gradient[1]} stopOpacity={0.05} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid 
+                strokeDasharray="3 3" 
+                stroke="rgba(255,255,255,0.05)" 
+                vertical={false}
+              />
+              <XAxis 
+                dataKey="formattedTime"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: '#6b7280', fontSize: 10 }}
+                interval="preserveStartEnd"
+                minTickGap={50}
+              />
+              <YAxis
+                domain={maxValue ? [0, maxValue] : ['auto', 'auto']}
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: '#6b7280', fontSize: 10 }}
+                tickFormatter={formatValue}
+                width={45}
+              />
+              <Tooltip
+                content={
+                  <CustomTooltip 
+                    formatValue={formatValue}
+                    labelFormatter={(label) => {
+                      const point = sampledData.find(d => d.formattedTime === label);
+                      return point ? formatFullTime(point.timestamp) : label;
+                    }}
+                  />
+                }
+              />
+              {showArea && (
+                <Area
+                  type="monotone"
+                  dataKey={dataKey}
+                  stroke={colorSet.stroke}
+                  strokeWidth={2}
+                  fill={`url(#${gradientId})`}
+                  dot={false}
+                  activeDot={{ r: 4, strokeWidth: 2, stroke: colorSet.stroke, fill: '#1f2937' }}
+                  name={label}
+                />
+              )}
+              {!showArea && (
+                <Line
+                  type="monotone"
+                  dataKey={dataKey}
+                  stroke={colorSet.stroke}
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 4, strokeWidth: 2, stroke: colorSet.stroke, fill: '#1f2937' }}
+                  name={label}
+                />
+              )}
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    );
+  };
+
+  // Multi-line Chart Component for Overview
+  const MultiLineChart = ({ 
+    lines,
+    formatValue,
+    maxValue,
+  }: { 
+    lines: Array<{ dataKey: string; color: keyof typeof chartColors; label: string }>;
+    formatValue: (v: number) => string;
+    maxValue?: number;
+  }) => {
+    return (
+      <div className="h-72 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={sampledData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+            <CartesianGrid 
+              strokeDasharray="3 3" 
+              stroke="rgba(255,255,255,0.05)" 
+              vertical={false}
+            />
+            <XAxis 
+              dataKey="formattedTime"
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: '#6b7280', fontSize: 10 }}
+              interval="preserveStartEnd"
+              minTickGap={50}
+            />
+            <YAxis
+              domain={maxValue ? [0, maxValue] : ['auto', 'auto']}
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: '#6b7280', fontSize: 10 }}
+              tickFormatter={formatValue}
+              width={45}
+            />
+            <Tooltip
+              content={
+                <CustomTooltip 
+                  formatValue={formatValue}
+                  labelFormatter={(label) => {
+                    const point = sampledData.find(d => d.formattedTime === label);
+                    return point ? formatFullTime(point.timestamp) : label;
+                  }}
+                />
+              }
+            />
+            <Legend 
+              verticalAlign="top" 
+              height={36}
+              iconType="circle"
+              iconSize={8}
+              formatter={(value) => <span className="text-xs text-gray-400">{value}</span>}
+            />
+            {lines.map(({ dataKey, color, label }) => (
+              <Line
+                key={dataKey}
+                type="monotone"
+                dataKey={dataKey}
+                stroke={chartColors[color].stroke}
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 4, strokeWidth: 2, stroke: chartColors[color].stroke, fill: '#1f2937' }}
+                name={label}
               />
             ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    );
+  };
+
+  // Network Chart with dual lines
+  const NetworkChart = () => {
+    return (
+      <div className="space-y-6">
+        <div className="h-56 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={sampledData} margin={{ top: 5, right: 5, left: -10, bottom: 5 }}>
+              <defs>
+                <linearGradient id="gradient-tx" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
+                  <stop offset="100%" stopColor="#10b981" stopOpacity={0.05} />
+                </linearGradient>
+                <linearGradient id="gradient-rx" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#06b6d4" stopOpacity={0.3} />
+                  <stop offset="100%" stopColor="#06b6d4" stopOpacity={0.05} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid 
+                strokeDasharray="3 3" 
+                stroke="rgba(255,255,255,0.05)" 
+                vertical={false}
+              />
+              <XAxis 
+                dataKey="formattedTime"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: '#6b7280', fontSize: 10 }}
+                interval="preserveStartEnd"
+                minTickGap={50}
+              />
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: '#6b7280', fontSize: 10 }}
+                tickFormatter={formatBytesLocal}
+                width={55}
+              />
+              <Tooltip
+                content={
+                  <CustomTooltip 
+                    formatValue={formatBytesLocal}
+                    labelFormatter={(label) => {
+                      const point = sampledData.find(d => d.formattedTime === label);
+                      return point ? formatFullTime(point.timestamp) : label;
+                    }}
+                  />
+                }
+              />
+              <Legend 
+                verticalAlign="top" 
+                height={36}
+                iconType="circle"
+                iconSize={8}
+                formatter={(value) => <span className="text-xs text-gray-400">{value}</span>}
+              />
+              <Area
+                type="monotone"
+                dataKey="net_tx"
+                stroke="#10b981"
+                strokeWidth={2}
+                fill="url(#gradient-tx)"
+                dot={false}
+                activeDot={{ r: 4, strokeWidth: 2, stroke: '#10b981', fill: '#1f2937' }}
+                name="Upload (TX)"
+              />
+              <Area
+                type="monotone"
+                dataKey="net_rx"
+                stroke="#06b6d4"
+                strokeWidth={2}
+                fill="url(#gradient-rx)"
+                dot={false}
+                activeDot={{ r: 4, strokeWidth: 2, stroke: '#06b6d4', fill: '#1f2937' }}
+                name="Download (RX)"
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="grid grid-cols-2 gap-4 text-center">
+          <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+            <div className="text-[10px] text-gray-500 uppercase">Total Upload</div>
+            <div className="text-lg font-mono text-emerald-400">
+              {formatBytesLocal(data.reduce((a, b) => a + b.net_tx, 0))}
+            </div>
           </div>
-          {/* X Axis Labels */}
-          <div className="flex justify-between text-[9px] text-gray-600 font-mono mt-1 px-1">
-            {timeLabels.map((t, i) => (
-              <span key={i} className="whitespace-nowrap">{t.label}</span>
-            ))}
+          <div className="p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/20">
+            <div className="text-[10px] text-gray-500 uppercase">Total Download</div>
+            <div className="text-lg font-mono text-cyan-400">
+              {formatBytesLocal(data.reduce((a, b) => a + b.net_rx, 0))}
+            </div>
           </div>
         </div>
       </div>
@@ -219,42 +499,44 @@ function HistoryChart({ serverId }: { serverId: string }) {
     switch (tab) {
       case 'overview':
         return (
-          <div className={`space-y-6 transition-opacity ${opacity}`}>
-            <Chart 
-              data={sampledData} 
-              color="blue" 
-              label="CPU Usage"
-              getValue={d => d.cpu}
-              formatValue={v => `${v.toFixed(1)}%`}
+          <div className={`transition-opacity ${opacity}`}>
+            <MultiLineChart 
+              lines={[
+                { dataKey: 'cpu', color: 'blue', label: 'CPU %' },
+                { dataKey: 'memory', color: 'purple', label: 'Memory %' },
+                { dataKey: 'disk', color: 'amber', label: 'Disk %' },
+              ]}
+              formatValue={v => `${v.toFixed(0)}%`}
               maxValue={100}
             />
-            <Chart 
-              data={sampledData} 
-              color="purple" 
-              label="Memory Usage"
-              getValue={d => d.memory}
-              formatValue={v => `${v.toFixed(1)}%`}
-              maxValue={100}
-            />
-            <Chart 
-              data={sampledData} 
-              color="amber" 
-              label="Disk Usage"
-              getValue={d => d.disk}
-              formatValue={v => `${v.toFixed(1)}%`}
-              maxValue={100}
-            />
+            <div className="mt-4 grid grid-cols-3 gap-4">
+              {[
+                { key: 'cpu', color: 'blue', label: 'CPU' },
+                { key: 'memory', color: 'purple', label: 'Memory' },
+                { key: 'disk', color: 'amber', label: 'Disk' },
+              ].map(({ key, color, label }) => {
+                const values = data.map(d => d[key as keyof HistoryPoint] as number);
+                const avg = values.reduce((a, b) => a + b, 0) / values.length;
+                return (
+                  <div key={key} className={`p-3 rounded-lg bg-${color}-500/10 border border-${color}-500/20`}>
+                    <div className="text-[10px] text-gray-500 uppercase mb-1">{label} Avg</div>
+                    <div className={`text-xl font-mono font-bold`} style={{ color: chartColors[color as keyof typeof chartColors].stroke }}>
+                      {avg.toFixed(1)}%
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         );
 
       case 'cpu':
         return (
           <div className={`transition-opacity ${opacity}`}>
-            <Chart 
-              data={sampledData} 
+            <SingleLineChart 
+              dataKey="cpu"
               color="blue" 
               label="CPU Usage"
-              getValue={d => d.cpu}
               formatValue={v => `${v.toFixed(1)}%`}
               maxValue={100}
             />
@@ -284,11 +566,10 @@ function HistoryChart({ serverId }: { serverId: string }) {
       case 'memory':
         return (
           <div className={`transition-opacity ${opacity}`}>
-            <Chart 
-              data={sampledData} 
+            <SingleLineChart 
+              dataKey="memory"
               color="purple" 
               label="Memory Usage"
-              getValue={d => d.memory}
               formatValue={v => `${v.toFixed(1)}%`}
               maxValue={100}
             />
@@ -318,11 +599,10 @@ function HistoryChart({ serverId }: { serverId: string }) {
       case 'disk':
         return (
           <div className={`transition-opacity ${opacity}`}>
-            <Chart 
-              data={sampledData} 
+            <SingleLineChart 
+              dataKey="disk"
               color="amber" 
               label="Disk Usage"
-              getValue={d => d.disk}
               formatValue={v => `${v.toFixed(1)}%`}
               maxValue={100}
             />
@@ -351,41 +631,14 @@ function HistoryChart({ serverId }: { serverId: string }) {
 
       case 'network':
         return (
-          <div className={`space-y-6 transition-opacity ${opacity}`}>
-            <Chart 
-              data={sampledData} 
-              color="emerald" 
-              label="Upload (TX)"
-              getValue={d => d.net_tx}
-              formatValue={v => formatBytes(v)}
-            />
-            <Chart 
-              data={sampledData} 
-              color="cyan" 
-              label="Download (RX)"
-              getValue={d => d.net_rx}
-              formatValue={v => formatBytes(v)}
-            />
-            <div className="grid grid-cols-2 gap-4 text-center">
-              <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                <div className="text-[10px] text-gray-500 uppercase">Total Upload</div>
-                <div className="text-lg font-mono text-emerald-400">
-                  {formatBytes(data.reduce((a, b) => a + b.net_tx, 0))}
-                </div>
-              </div>
-              <div className="p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/20">
-                <div className="text-[10px] text-gray-500 uppercase">Total Download</div>
-                <div className="text-lg font-mono text-cyan-400">
-                  {formatBytes(data.reduce((a, b) => a + b.net_rx, 0))}
-                </div>
-              </div>
-            </div>
+          <div className={`transition-opacity ${opacity}`}>
+            <NetworkChart />
           </div>
         );
 
       case 'ping':
         // Colors for different ping targets
-        const pingColors = ['rose', 'cyan', 'amber', 'purple', 'emerald', 'blue'];
+        const pingColorKeys: (keyof typeof chartColors)[] = ['rose', 'cyan', 'amber', 'purple', 'emerald', 'blue'];
         
         // Check if we have detailed ping target data
         if (pingTargets.length > 0) {
@@ -393,7 +646,8 @@ function HistoryChart({ serverId }: { serverId: string }) {
             <div className={`transition-opacity ${opacity}`}>
               <div className="space-y-6">
                 {pingTargets.map((target, idx) => {
-                  const color = pingColors[idx % pingColors.length];
+                  const colorKey = pingColorKeys[idx % pingColorKeys.length];
+                  const colorSet = chartColors[colorKey];
                   const validData = target.data.filter(d => d.latency_ms !== null);
                   if (validData.length === 0) return null;
                   
@@ -403,67 +657,85 @@ function HistoryChart({ serverId }: { serverId: string }) {
                   const max = Math.max(...values);
                   
                   // Sample data for display
-                  const sampleRate = Math.max(1, Math.floor(target.data.length / 60));
-                  const sampledPingData = target.data.filter((_, i) => i % sampleRate === 0);
+                  const sampleRate = Math.max(1, Math.floor(target.data.length / 120));
+                  const sampledPingData = target.data.filter((_, i) => i % sampleRate === 0).map((d, i) => ({
+                    ...d,
+                    index: i,
+                    formattedTime: formatTimeForChart(d.timestamp),
+                    latency: d.latency_ms ?? 0,
+                  }));
                   
-                  // Calculate time labels for X axis (5 labels)
-                  const getPingTimeLabels = () => {
-                    if (sampledPingData.length < 2) return [];
-                    const labels: { index: number; label: string }[] = [];
-                    const step = Math.floor((sampledPingData.length - 1) / 4);
-                    for (let i = 0; i <= 4; i++) {
-                      const idx = Math.min(i * step, sampledPingData.length - 1);
-                      labels.push({ index: idx, label: formatTime(sampledPingData[idx].timestamp) });
-                    }
-                    return labels;
-                  };
-                  const pingTimeLabels = getPingTimeLabels();
-                  
-                  const colorClasses: Record<string, { bg: string; text: string; border: string }> = {
-                    rose: { bg: 'bg-rose-500', text: 'text-rose-400', border: 'border-rose-500/20' },
-                    cyan: { bg: 'bg-cyan-500', text: 'text-cyan-400', border: 'border-cyan-500/20' },
-                    amber: { bg: 'bg-amber-500', text: 'text-amber-400', border: 'border-amber-500/20' },
-                    purple: { bg: 'bg-purple-500', text: 'text-purple-400', border: 'border-purple-500/20' },
-                    emerald: { bg: 'bg-emerald-500', text: 'text-emerald-400', border: 'border-emerald-500/20' },
-                    blue: { bg: 'bg-blue-500', text: 'text-blue-400', border: 'border-blue-500/20' },
-                  };
-                  const c = colorClasses[color];
+                  const gradientId = `gradient-ping-${idx}`;
                   
                   return (
-                    <div key={target.name} className={`p-4 rounded-lg bg-white/[0.02] border ${c.border}`}>
+                    <div key={target.name} className="p-4 rounded-lg bg-white/[0.02] border border-white/10">
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
-                          <span className={`w-2 h-2 rounded-full ${c.bg}`}></span>
-                          <span className={`text-sm font-medium ${c.text}`}>{target.name}</span>
+                          <span 
+                            className="w-3 h-3 rounded-full" 
+                            style={{ backgroundColor: colorSet.stroke }}
+                          />
+                          <span className="text-sm font-medium text-white">{target.name}</span>
                           <span className="text-xs text-gray-500 font-mono">({target.host})</span>
                         </div>
                         <div className="flex gap-4 text-xs">
                           <span className="text-gray-500">min: <span className="text-emerald-400 font-mono">{min.toFixed(1)}ms</span></span>
-                          <span className="text-gray-500">avg: <span className={`${c.text} font-mono`}>{avg.toFixed(1)}ms</span></span>
+                          <span className="text-gray-500">avg: <span style={{ color: colorSet.stroke }} className="font-mono">{avg.toFixed(1)}ms</span></span>
                           <span className="text-gray-500">max: <span className="text-amber-400 font-mono">{max.toFixed(1)}ms</span></span>
                         </div>
                       </div>
-                      <div className="relative">
-                        <div className="h-16 flex items-end gap-px bg-white/[0.02] rounded-lg p-2 overflow-hidden">
-                          {sampledPingData.map((point, i) => {
-                            const value = point.latency_ms ?? 0;
-                            const maxVal = Math.max(...values, 1);
-                            return (
-                              <div
-                                key={i}
-                                className={`flex-1 min-w-[2px] ${c.bg} rounded-t transition-all hover:opacity-80 cursor-pointer ${point.status !== 'ok' ? 'opacity-30' : ''}`}
-                                style={{ height: `${Math.max((value / maxVal) * 100, 1)}%` }}
-                                title={`${formatTime(point.timestamp)}: ${value.toFixed(1)} ms (${point.status})`}
-                              />
-                            );
-                          })}
-                        </div>
-                        {/* X Axis Labels */}
-                        <div className="flex justify-between text-[9px] text-gray-600 font-mono mt-1 px-1">
-                          {pingTimeLabels.map((t, i) => (
-                            <span key={i} className="whitespace-nowrap">{t.label}</span>
-                          ))}
-                        </div>
+                      <div className="h-40 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={sampledPingData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+                            <defs>
+                              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor={colorSet.gradient[0]} stopOpacity={0.3} />
+                                <stop offset="100%" stopColor={colorSet.gradient[1]} stopOpacity={0.05} />
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid 
+                              strokeDasharray="3 3" 
+                              stroke="rgba(255,255,255,0.05)" 
+                              vertical={false}
+                            />
+                            <XAxis 
+                              dataKey="formattedTime"
+                              axisLine={false}
+                              tickLine={false}
+                              tick={{ fill: '#6b7280', fontSize: 10 }}
+                              interval="preserveStartEnd"
+                              minTickGap={50}
+                            />
+                            <YAxis
+                              axisLine={false}
+                              tickLine={false}
+                              tick={{ fill: '#6b7280', fontSize: 10 }}
+                              tickFormatter={v => `${v}ms`}
+                              width={45}
+                            />
+                            <Tooltip
+                              content={
+                                <CustomTooltip 
+                                  formatValue={v => `${v.toFixed(1)} ms`}
+                                  labelFormatter={(label) => {
+                                    const point = sampledPingData.find(d => d.formattedTime === label);
+                                    return point ? formatFullTime(point.timestamp) : label;
+                                  }}
+                                />
+                              }
+                            />
+                            <Area
+                              type="monotone"
+                              dataKey="latency"
+                              stroke={colorSet.stroke}
+                              strokeWidth={2}
+                              fill={`url(#${gradientId})`}
+                              dot={false}
+                              activeDot={{ r: 4, strokeWidth: 2, stroke: colorSet.stroke, fill: '#1f2937' }}
+                              name="Latency"
+                            />
+                          </AreaChart>
+                        </ResponsiveContainer>
                       </div>
                     </div>
                   );
@@ -494,15 +766,79 @@ function HistoryChart({ serverId }: { serverId: string }) {
         const minPing = Math.min(...pingValues);
         const maxPing = Math.max(...pingValues);
         
+        // Transform ping data for chart
+        const pingChartData = pingData.map((d, i) => ({
+          ...d,
+          index: i,
+          ping: d.ping_ms ?? 0,
+        }));
+        
         return (
           <div className={`transition-opacity ${opacity}`}>
-            <Chart 
-              data={pingData} 
-              color="rose" 
-              label="Ping Latency (Average)"
-              getValue={d => d.ping_ms ?? 0}
-              formatValue={v => `${v.toFixed(1)} ms`}
-            />
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full bg-rose-500" />
+                <span className="text-sm font-medium text-white">Ping Latency (Average)</span>
+              </div>
+              <div className="flex gap-4 text-xs">
+                <span className="text-gray-500">min: <span className="text-emerald-400 font-mono">{minPing.toFixed(1)}ms</span></span>
+                <span className="text-gray-500">avg: <span className="text-rose-400 font-mono">{avgPing.toFixed(1)}ms</span></span>
+                <span className="text-gray-500">max: <span className="text-amber-400 font-mono">{maxPing.toFixed(1)}ms</span></span>
+              </div>
+            </div>
+            <div className="h-48 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={pingChartData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+                  <defs>
+                    <linearGradient id="gradient-ping-avg" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#f43f5e" stopOpacity={0.3} />
+                      <stop offset="100%" stopColor="#a855f7" stopOpacity={0.05} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid 
+                    strokeDasharray="3 3" 
+                    stroke="rgba(255,255,255,0.05)" 
+                    vertical={false}
+                  />
+                  <XAxis 
+                    dataKey="formattedTime"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: '#6b7280', fontSize: 10 }}
+                    interval="preserveStartEnd"
+                    minTickGap={50}
+                  />
+                  <YAxis
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: '#6b7280', fontSize: 10 }}
+                    tickFormatter={v => `${v}ms`}
+                    width={45}
+                  />
+                  <Tooltip
+                    content={
+                      <CustomTooltip 
+                        formatValue={v => `${v.toFixed(1)} ms`}
+                        labelFormatter={(label) => {
+                          const point = pingChartData.find(d => d.formattedTime === label);
+                          return point ? formatFullTime(point.timestamp) : label;
+                        }}
+                      />
+                    }
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="ping"
+                    stroke="#f43f5e"
+                    strokeWidth={2}
+                    fill="url(#gradient-ping-avg)"
+                    dot={false}
+                    activeDot={{ r: 4, strokeWidth: 2, stroke: '#f43f5e', fill: '#1f2937' }}
+                    name="Latency"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
             <div className="mt-6 grid grid-cols-3 gap-4 text-center">
               <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
                 <div className="text-[10px] text-gray-500 uppercase">Min</div>

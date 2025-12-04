@@ -4,7 +4,7 @@ import { useServerManager, formatSpeed, formatUptime, type ServerState } from '.
 import { getOsIcon } from '../components/Icons';
 import { getProviderLogo, getDistributionLogo, LogoImage } from '../utils/logoUtils';
 import { useTheme } from '../context/ThemeContext';
-import type { SocialLink } from '../types';
+import type { SocialLink, GroupOption } from '../types';
 
 type ViewMode = 'list' | 'grid' | 'compact';
 
@@ -926,7 +926,7 @@ function VpsGridCardSkeleton({ isDark }: { isDark: boolean }) {
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { servers, groups, siteSettings, isInitialLoad } = useServerManager();
+  const { servers, groupDimensions, siteSettings, isInitialLoad } = useServerManager();
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === 'dark';
   const themeClass = isDark ? 'dark' : 'light';
@@ -935,6 +935,14 @@ export default function Dashboard() {
     return (localStorage.getItem('vstats-view-mode') as ViewMode) || 'grid';
   });
   const [serverVersion, setServerVersion] = useState<string>('');
+  
+  // Selected dimension for grouping (null = no grouping)
+  const [selectedDimensionId, setSelectedDimensionId] = useState<string | null>(() => {
+    return localStorage.getItem('vstats-group-dimension') || null;
+  });
+  
+  // Get enabled dimensions only
+  const enabledDimensions = groupDimensions.filter(d => d.enabled);
 
   useEffect(() => {
     const fetchServerVersion = async () => {
@@ -965,30 +973,50 @@ export default function Dashboard() {
 
   const showSkeleton = isInitialLoad && servers.length === 0;
 
-  // Organize servers by group
-  const sortedGroups = [...groups].sort((a, b) => a.sort_order - b.sort_order);
-  const serversByGroup = new Map<string | null, typeof servers>();
+  // Get the selected dimension
+  const selectedDimension = enabledDimensions.find(d => d.id === selectedDimensionId) || null;
   
-  // Initialize groups
-  for (const group of sortedGroups) {
-    serversByGroup.set(group.id, []);
-  }
-  serversByGroup.set(null, []); // Ungrouped
-  
-  // Distribute servers to groups
-  for (const server of servers) {
-    const groupId = server.config.group_id || null;
-    if (serversByGroup.has(groupId)) {
-      serversByGroup.get(groupId)!.push(server);
+  // Handle dimension selection
+  const handleDimensionSelect = (dimId: string | null) => {
+    setSelectedDimensionId(dimId);
+    if (dimId) {
+      localStorage.setItem('vstats-group-dimension', dimId);
     } else {
-      // Group doesn't exist (shouldn't happen normally)
-      serversByGroup.get(null)!.push(server);
+      localStorage.removeItem('vstats-group-dimension');
     }
+  };
+  
+  // Organize servers by selected dimension
+  const serversByOption = new Map<string | null, typeof servers>();
+  const sortedOptions: GroupOption[] = selectedDimension 
+    ? [...selectedDimension.options].sort((a, b) => a.sort_order - b.sort_order)
+    : [];
+  
+  // Initialize options
+  for (const option of sortedOptions) {
+    serversByOption.set(option.id, []);
+  }
+  serversByOption.set(null, []); // Ungrouped/Unassigned
+  
+  // Distribute servers to options based on selected dimension
+  if (selectedDimension) {
+    for (const server of servers) {
+      const optionId = server.config.group_values?.[selectedDimension.id] || null;
+      if (serversByOption.has(optionId)) {
+        serversByOption.get(optionId)!.push(server);
+      } else {
+        // Option doesn't exist (shouldn't happen normally)
+        serversByOption.get(null)!.push(server);
+      }
+    }
+  } else {
+    // No dimension selected, all servers go to ungrouped
+    serversByOption.set(null, [...servers]);
   }
   
-  // Check if we have any groups with servers
-  const hasGroupedServers = sortedGroups.some(g => (serversByGroup.get(g.id)?.length || 0) > 0);
-  const ungroupedServers = serversByGroup.get(null) || [];
+  // Check if we have any options with servers
+  const hasGroupedServers = selectedDimension && sortedOptions.some(o => (serversByOption.get(o.id)?.length || 0) > 0);
+  const ungroupedServers = serversByOption.get(null) || [];
 
   return (
     <div className={`vps-page vps-page--${themeClass}`}>
@@ -1093,6 +1121,44 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* Dimension Selector */}
+        {enabledDimensions.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`text-xs font-medium ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>分组:</span>
+            <button
+              onClick={() => handleDimensionSelect(null)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                selectedDimensionId === null
+                  ? isDark 
+                    ? 'bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/30'
+                    : 'bg-emerald-500/10 text-emerald-600 ring-1 ring-emerald-500/30'
+                  : isDark
+                    ? 'bg-gray-800/50 text-gray-400 hover:bg-gray-700/50'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+              }`}
+            >
+              全部
+            </button>
+            {enabledDimensions.map(dim => (
+              <button
+                key={dim.id}
+                onClick={() => handleDimensionSelect(dim.id)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                  selectedDimensionId === dim.id
+                    ? isDark 
+                      ? 'bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/30'
+                      : 'bg-emerald-500/10 text-emerald-600 ring-1 ring-emerald-500/30'
+                    : isDark
+                      ? 'bg-gray-800/50 text-gray-400 hover:bg-gray-700/50'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                }`}
+              >
+                {dim.name}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Server List */}
         <div className="flex flex-col gap-3">
           <div className={`flex items-center justify-between px-1 text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
@@ -1133,30 +1199,30 @@ export default function Dashboard() {
                 {[1, 2, 3, 4].map(i => <VpsGridCardSkeleton key={i} isDark={isDark} />)}
               </div>
             )
-          ) : hasGroupedServers ? (
-            // Display servers grouped by groups
+          ) : hasGroupedServers && selectedDimension ? (
+            // Display servers grouped by dimension options
             <div className="space-y-6">
-              {sortedGroups.map((group) => {
-                const groupServers = serversByGroup.get(group.id) || [];
-                if (groupServers.length === 0) return null;
+              {sortedOptions.map((option) => {
+                const optionServers = serversByOption.get(option.id) || [];
+                if (optionServers.length === 0) return null;
                 
                 return (
-                  <div key={group.id}>
-                    {/* Group Header */}
+                  <div key={option.id}>
+                    {/* Option Header */}
                     <div className={`flex items-center gap-2 mb-3 px-1`}>
                       <div className={`w-1.5 h-1.5 rounded-full ${isDark ? 'bg-orange-400' : 'bg-orange-500'}`} />
                       <span className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                        {group.name}
+                        {option.name}
                       </span>
                       <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
-                        ({groupServers.length})
+                        ({optionServers.length})
                       </span>
                     </div>
                     
-                    {/* Group Servers */}
+                    {/* Option Servers */}
                     {viewMode === 'compact' ? (
                       <div className="vps-compact-view">
-                        {groupServers.map((server, index) => (
+                        {optionServers.map((server, index) => (
                           <div 
                             key={server.config.id}
                             className="animate-fadeIn"
@@ -1172,7 +1238,7 @@ export default function Dashboard() {
                       </div>
                     ) : viewMode === 'list' ? (
                       <div className="vps-list-view">
-                        {groupServers.map((server, index) => (
+                        {optionServers.map((server, index) => (
                           <div 
                             key={server.config.id}
                             className="animate-fadeIn"
@@ -1188,7 +1254,7 @@ export default function Dashboard() {
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                        {groupServers.map((server, index) => (
+                        {optionServers.map((server, index) => (
                           <div 
                             key={server.config.id}
                             className="animate-fadeIn"
@@ -1207,21 +1273,21 @@ export default function Dashboard() {
                 );
               })}
               
-              {/* Ungrouped Servers */}
+              {/* Unassigned Servers */}
               {ungroupedServers.length > 0 && (
                 <div>
-                  {/* Ungrouped Header */}
+                  {/* Unassigned Header */}
                   <div className={`flex items-center gap-2 mb-3 px-1`}>
                     <div className={`w-1.5 h-1.5 rounded-full ${isDark ? 'bg-gray-500' : 'bg-gray-400'}`} />
                     <span className={`text-sm font-medium ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                      Ungrouped
+                      未分配
                     </span>
                     <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
                       ({ungroupedServers.length})
                     </span>
                   </div>
                   
-                  {/* Ungrouped Servers */}
+                  {/* Unassigned Servers */}
                   {viewMode === 'compact' ? (
                     <div className="vps-compact-view">
                       {ungroupedServers.map((server, index) => (

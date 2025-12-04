@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { showToast } from '../components/Toast';
-import type { SiteSettings, SocialLink, ServerGroup } from '../types';
+import type { SiteSettings, SocialLink, ServerGroup, GroupDimension } from '../types';
 
 // Universal copy to clipboard function that works in all contexts
 const copyTextToClipboard = async (text: string): Promise<boolean> => {
@@ -52,7 +52,8 @@ interface RemoteServer {
   location: string;
   provider: string;
   tag?: string;
-  group_id?: string;
+  group_id?: string; // Deprecated
+  group_values?: Record<string, string>; // dimension_id -> option_id
   version?: string;
   token?: string;
   ip?: string;
@@ -183,29 +184,27 @@ export default function Settings() {
   const [showProbeSettings, setShowProbeSettings] = useState(false);
   const [probeSaving, setProbeSaving] = useState(false);
   
-  // Group management
+  // Group management (deprecated - kept for backward compatibility)
   interface ServerGroupLocal {
     id: string;
     name: string;
     sort_order: number;
   }
   const [groups, setGroups] = useState<ServerGroupLocal[]>([]);
-  const [showGroupsSection, setShowGroupsSection] = useState(false);
-  const [newGroupName, setNewGroupName] = useState('');
-  const [addingGroup, setAddingGroup] = useState(false);
-  const [editingGroup, setEditingGroup] = useState<string | null>(null);
-  const [editGroupName, setEditGroupName] = useState('');
   const [probeSuccess, setProbeSuccess] = useState(false);
   
-  // Groups management (reserved for future use)
-  const [_groups, _setGroups] = useState<ServerGroup[]>([]);
-  const [_showGroupsSection, _setShowGroupsSection] = useState(false);
-  const [_newGroupName, _setNewGroupName] = useState('');
-  const [_addingGroup, _setAddingGroup] = useState(false);
-  const [_editingGroup, _setEditingGroup] = useState<string | null>(null);
-  const [_editGroupName, _setEditGroupName] = useState('');
-  // Suppress unused warnings
-  void [_groups, _setGroups, _showGroupsSection, _setShowGroupsSection, _newGroupName, _setNewGroupName, _addingGroup, _setAddingGroup, _editingGroup, _setEditingGroup, _editGroupName, _setEditGroupName];
+  // Suppress unused warnings for deprecated group management
+  const [_groups] = useState<ServerGroup[]>([]);
+  void [_groups];
+  
+  // Dimension management
+  const [dimensions, setDimensions] = useState<GroupDimension[]>([]);
+  const [showDimensionsSection, setShowDimensionsSection] = useState(false);
+  const [expandedDimension, setExpandedDimension] = useState<string | null>(null);
+  const [newOptionName, setNewOptionName] = useState<Record<string, string>>({});
+  const [addingOption, setAddingOption] = useState<Record<string, boolean>>({});
+  const [editingOption, setEditingOption] = useState<{ dimId: string; optId: string } | null>(null);
+  const [editOptionName, setEditOptionName] = useState('');
 
   useEffect(() => {
     // Wait for auth check to complete before redirecting
@@ -219,7 +218,7 @@ export default function Settings() {
     fetchSiteSettings();
     fetchLocalNodeConfig();
     fetchProbeSettings();
-    fetchGroups();
+    fetchDimensions();
     generateInstallCommand();
     fetchAgentStatus();
     fetchServerVersion();
@@ -487,92 +486,133 @@ export default function Settings() {
   };
   
   // ============================================================================
-  // Group Management Functions
+  // Dimension Management Functions
   // ============================================================================
   
-  const fetchGroups = async () => {
+  const fetchDimensions = async () => {
     try {
-      const res = await fetch('/api/groups', {
+      const res = await fetch('/api/dimensions', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
       if (res.ok) {
         const data = await res.json();
-        setGroups(data || []);
+        setDimensions(data || []);
+        // Also fetch groups for backward compatibility
+        const groupsRes = await fetch('/api/groups', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (groupsRes.ok) {
+          setGroups(await groupsRes.json() || []);
+        }
       }
     } catch (e) {
-      console.error('Failed to fetch groups', e);
+      console.error('Failed to fetch dimensions', e);
     }
   };
   
-  const addGroup = async () => {
-    if (!newGroupName.trim()) return;
-    
-    setAddingGroup(true);
+  const toggleDimensionEnabled = async (dimId: string, enabled: boolean) => {
     try {
-      const res = await fetch('/api/groups', {
+      const res = await fetch(`/api/dimensions/${dimId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ enabled })
+      });
+      
+      if (res.ok) {
+        const updated = await res.json();
+        setDimensions(dimensions.map(d => d.id === dimId ? updated : d));
+        showToast(enabled ? '维度已启用' : '维度已禁用', 'success');
+      } else {
+        showToast('更新失败', 'error');
+      }
+    } catch (e) {
+      console.error('Failed to update dimension', e);
+      showToast('更新失败', 'error');
+    }
+  };
+  
+  const addOption = async (dimId: string) => {
+    const name = newOptionName[dimId]?.trim();
+    if (!name) return;
+    
+    setAddingOption({ ...addingOption, [dimId]: true });
+    try {
+      const dim = dimensions.find(d => d.id === dimId);
+      const res = await fetch(`/api/dimensions/${dimId}/options`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          name: newGroupName.trim(),
-          sort_order: groups.length
+          name,
+          sort_order: dim?.options?.length || 0
         })
       });
       
       if (res.ok) {
-        const group = await res.json();
-        setGroups([...groups, group]);
-        setNewGroupName('');
-        showToast('Group created successfully', 'success');
+        const option = await res.json();
+        setDimensions(dimensions.map(d => 
+          d.id === dimId 
+            ? { ...d, options: [...(d.options || []), option] }
+            : d
+        ));
+        setNewOptionName({ ...newOptionName, [dimId]: '' });
+        showToast('选项已添加', 'success');
       } else {
-        showToast('Failed to create group', 'error');
+        showToast('添加失败', 'error');
       }
     } catch (e) {
-      console.error('Failed to add group', e);
-      showToast('Failed to create group', 'error');
+      console.error('Failed to add option', e);
+      showToast('添加失败', 'error');
     }
-    setAddingGroup(false);
+    setAddingOption({ ...addingOption, [dimId]: false });
   };
   
-  const updateGroupName = async (groupId: string) => {
-    if (!editGroupName.trim()) return;
+  const updateOption = async (dimId: string, optId: string) => {
+    if (!editOptionName.trim()) return;
     
     try {
-      const res = await fetch(`/api/groups/${groupId}`, {
+      const res = await fetch(`/api/dimensions/${dimId}/options/${optId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ name: editGroupName.trim() })
+        body: JSON.stringify({ name: editOptionName.trim() })
       });
       
       if (res.ok) {
         const updated = await res.json();
-        setGroups(groups.map(g => g.id === groupId ? updated : g));
-        setEditingGroup(null);
-        setEditGroupName('');
-        showToast('Group updated successfully', 'success');
+        setDimensions(dimensions.map(d => 
+          d.id === dimId 
+            ? { ...d, options: d.options.map(o => o.id === optId ? updated : o) }
+            : d
+        ));
+        setEditingOption(null);
+        setEditOptionName('');
+        showToast('选项已更新', 'success');
       } else {
-        showToast('Failed to update group', 'error');
+        showToast('更新失败', 'error');
       }
     } catch (e) {
-      console.error('Failed to update group', e);
-      showToast('Failed to update group', 'error');
+      console.error('Failed to update option', e);
+      showToast('更新失败', 'error');
     }
   };
   
-  const deleteGroup = async (groupId: string) => {
-    if (!confirm('Are you sure you want to delete this group? Servers in this group will be moved to "Ungrouped".')) {
+  const deleteOption = async (dimId: string, optId: string) => {
+    if (!confirm('确定要删除此选项吗？使用此选项的服务器将变为未分配状态。')) {
       return;
     }
     
     try {
-      const res = await fetch(`/api/groups/${groupId}`, {
+      const res = await fetch(`/api/dimensions/${dimId}/options/${optId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -580,17 +620,24 @@ export default function Settings() {
       });
       
       if (res.ok) {
-        setGroups(groups.filter(g => g.id !== groupId));
-        // Update servers that had this group
-        setServers(servers.map(s => s.group_id === groupId ? { ...s, group_id: undefined } : s));
-        showToast('Group deleted successfully', 'success');
+        setDimensions(dimensions.map(d => 
+          d.id === dimId 
+            ? { ...d, options: d.options.filter(o => o.id !== optId) }
+            : d
+        ));
+        showToast('选项已删除', 'success');
       } else {
-        showToast('Failed to delete group', 'error');
+        showToast('删除失败', 'error');
       }
     } catch (e) {
-      console.error('Failed to delete group', e);
-      showToast('Failed to delete group', 'error');
+      console.error('Failed to delete option', e);
+      showToast('删除失败', 'error');
     }
+  };
+  
+  // Get count of servers using a specific option
+  const getOptionServerCount = (dimId: string, optId: string) => {
+    return servers.filter(s => s.group_values?.[dimId] === optId).length;
   };
   
   const removePingTarget = (index: number) => {
@@ -662,8 +709,8 @@ export default function Settings() {
   --token "${token}" \\
   --name "$(hostname)"`;
     
-    // Windows PowerShell command (auto-handles execution policy and admin rights)
-    const windowsCommand = `irm ${baseUrl}/agent.ps1 -OutFile agent.ps1; .\\agent.ps1 -Server "${baseUrl}" -Token "${token}"`;
+    // Windows PowerShell command (with TLS 1.2 and execution policy bypass)
+    const windowsCommand = `[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; iex (irm ${baseUrl}/agent.ps1); Install-VStatsAgent -Server "${baseUrl}" -Token "${token}"`;
     
     setInstallCommand(linuxCommand);
     setWindowsInstallCommand(windowsCommand);
@@ -1297,129 +1344,186 @@ export default function Settings() {
         )}
       </div>
 
-      {/* Groups Management Section */}
+      {/* Dimension Management Section */}
       <div className="nezha-card p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-orange-500"></span>
-            Server Groups
+            分组维度
           </h2>
           <button
-            onClick={() => setShowGroupsSection(!showGroupsSection)}
+            onClick={() => setShowDimensionsSection(!showDimensionsSection)}
             className="px-4 py-2 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 text-sm font-medium transition-colors"
           >
-            {showGroupsSection ? 'Hide' : 'Manage'}
+            {showDimensionsSection ? '收起' : '管理'}
           </button>
         </div>
         
         <p className="text-gray-400 text-sm mb-4">
-          Create groups to organize your servers. Groups help categorize servers on the dashboard.
+          管理服务器分组维度。启用的维度会显示在 Dashboard 上供筛选分组。
         </p>
         
-        {showGroupsSection && (
+        {showDimensionsSection && (
           <div className="space-y-4">
-            {/* Add New Group */}
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={newGroupName}
-                onChange={(e) => setNewGroupName(e.target.value)}
-                className="flex-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-orange-500/50"
-                placeholder="New group name..."
-                onKeyDown={(e) => e.key === 'Enter' && addGroup()}
-              />
-              <button
-                onClick={addGroup}
-                disabled={addingGroup || !newGroupName.trim()}
-                className="px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium transition-colors disabled:opacity-50"
-              >
-                {addingGroup ? 'Adding...' : 'Add Group'}
-              </button>
-            </div>
-            
-            {/* Groups List */}
-            {groups.length === 0 ? (
+            {dimensions.length === 0 ? (
               <div className="text-gray-600 text-sm text-center py-4 border border-dashed border-white/10 rounded-lg">
-                No groups created yet. Create a group to organize your servers.
+                暂无分组维度
               </div>
             ) : (
-              <div className="space-y-2">
-                {groups.map((group) => (
+              <div className="space-y-3">
+                {dimensions.sort((a, b) => a.sort_order - b.sort_order).map((dimension) => (
                   <div
-                    key={group.id}
-                    className="flex items-center justify-between p-3 rounded-lg bg-white/[0.02] border border-white/5 hover:border-white/10 transition-colors"
+                    key={dimension.id}
+                    className="rounded-lg bg-white/[0.02] border border-white/5 overflow-hidden"
                   >
-                    {editingGroup === group.id ? (
-                      <div className="flex items-center gap-2 flex-1">
-                        <input
-                          type="text"
-                          value={editGroupName}
-                          onChange={(e) => setEditGroupName(e.target.value)}
-                          className="flex-1 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-orange-500/50"
-                          autoFocus
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') updateGroupName(group.id);
-                            if (e.key === 'Escape') {
-                              setEditingGroup(null);
-                              setEditGroupName('');
-                            }
-                          }}
-                        />
+                    {/* Dimension Header */}
+                    <div className="flex items-center justify-between p-3">
+                      <div className="flex items-center gap-3">
                         <button
-                          onClick={() => updateGroupName(group.id)}
-                          className="px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-medium transition-colors"
+                          onClick={() => setExpandedDimension(expandedDimension === dimension.id ? null : dimension.id)}
+                          className="p-1 hover:bg-white/5 rounded transition-colors"
                         >
-                          Save
+                          <svg className={`w-4 h-4 text-gray-400 transition-transform ${expandedDimension === dimension.id ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
                         </button>
-                        <button
-                          onClick={() => {
-                            setEditingGroup(null);
-                            setEditGroupName('');
-                          }}
-                          className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 text-xs transition-colors"
-                        >
-                          Cancel
-                        </button>
+                        <div className="w-8 h-8 rounded-lg bg-orange-500/10 border border-orange-500/20 flex items-center justify-center">
+                          <svg className="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <div className="text-white font-medium">{dimension.name}</div>
+                          <div className="text-xs text-gray-500">
+                            {dimension.options?.length || 0} 个选项
+                          </div>
+                        </div>
                       </div>
-                    ) : (
-                      <>
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-orange-500/10 border border-orange-500/20 flex items-center justify-center">
-                            <svg className="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                            </svg>
+                      <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <span className={`text-xs ${dimension.enabled ? 'text-emerald-400' : 'text-gray-500'}`}>
+                            {dimension.enabled ? '已启用' : '已禁用'}
+                          </span>
+                          <button
+                            onClick={() => toggleDimensionEnabled(dimension.id, !dimension.enabled)}
+                            className={`relative w-10 h-5 rounded-full transition-colors ${
+                              dimension.enabled ? 'bg-emerald-500' : 'bg-gray-700'
+                            }`}
+                          >
+                            <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                              dimension.enabled ? 'translate-x-5' : ''
+                            }`} />
+                          </button>
+                        </label>
+                      </div>
+                    </div>
+                    
+                    {/* Dimension Options (Expanded) */}
+                    {expandedDimension === dimension.id && (
+                      <div className="border-t border-white/5 p-3 bg-black/20">
+                        <div className="space-y-2">
+                          {/* Add New Option */}
+                          <div className="flex items-center gap-2 mb-3">
+                            <input
+                              type="text"
+                              value={newOptionName[dimension.id] || ''}
+                              onChange={(e) => setNewOptionName({ ...newOptionName, [dimension.id]: e.target.value })}
+                              className="flex-1 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-orange-500/50"
+                              placeholder="新选项名称..."
+                              onKeyDown={(e) => e.key === 'Enter' && addOption(dimension.id)}
+                            />
+                            <button
+                              onClick={() => addOption(dimension.id)}
+                              disabled={addingOption[dimension.id] || !newOptionName[dimension.id]?.trim()}
+                              className="px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium transition-colors disabled:opacity-50"
+                            >
+                              {addingOption[dimension.id] ? '添加中...' : '添加'}
+                            </button>
                           </div>
-                          <div>
-                            <div className="text-white font-medium">{group.name}</div>
-                            <div className="text-xs text-gray-500">
-                              {servers.filter(s => s.group_id === group.id).length} servers
+                          
+                          {/* Options List */}
+                          {(!dimension.options || dimension.options.length === 0) ? (
+                            <div className="text-gray-600 text-xs text-center py-3">
+                              暂无选项，请添加
                             </div>
-                          </div>
+                          ) : (
+                            <div className="space-y-1">
+                              {dimension.options.sort((a, b) => a.sort_order - b.sort_order).map((option) => (
+                                <div
+                                  key={option.id}
+                                  className="flex items-center justify-between p-2 rounded-lg bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+                                >
+                                  {editingOption?.dimId === dimension.id && editingOption?.optId === option.id ? (
+                                    <div className="flex items-center gap-2 flex-1">
+                                      <input
+                                        type="text"
+                                        value={editOptionName}
+                                        onChange={(e) => setEditOptionName(e.target.value)}
+                                        className="flex-1 px-2 py-1 rounded bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-orange-500/50"
+                                        autoFocus
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') updateOption(dimension.id, option.id);
+                                          if (e.key === 'Escape') {
+                                            setEditingOption(null);
+                                            setEditOptionName('');
+                                          }
+                                        }}
+                                      />
+                                      <button
+                                        onClick={() => updateOption(dimension.id, option.id)}
+                                        className="px-2 py-1 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs transition-colors"
+                                      >
+                                        保存
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          setEditingOption(null);
+                                          setEditOptionName('');
+                                        }}
+                                        className="px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-gray-400 text-xs transition-colors"
+                                      >
+                                        取消
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-sm text-gray-300">{option.name}</span>
+                                        <span className="text-xs text-gray-600">
+                                          ({getOptionServerCount(dimension.id, option.id)} 台)
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <button
+                                          onClick={() => {
+                                            setEditingOption({ dimId: dimension.id, optId: option.id });
+                                            setEditOptionName(option.name);
+                                          }}
+                                          className="p-1.5 rounded hover:bg-blue-500/10 text-gray-500 hover:text-blue-400 transition-colors"
+                                          title="编辑"
+                                        >
+                                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                          </svg>
+                                        </button>
+                                        <button
+                                          onClick={() => deleteOption(dimension.id, option.id)}
+                                          className="p-1.5 rounded hover:bg-red-500/10 text-gray-500 hover:text-red-400 transition-colors"
+                                          title="删除"
+                                        >
+                                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                          </svg>
+                                        </button>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => {
-                              setEditingGroup(group.id);
-                              setEditGroupName(group.name);
-                            }}
-                            className="p-2 rounded-lg hover:bg-blue-500/10 text-gray-500 hover:text-blue-400 transition-colors"
-                            title="Edit Group"
-                          >
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => deleteGroup(group.id)}
-                            className="p-2 rounded-lg hover:bg-red-500/10 text-gray-500 hover:text-red-400 transition-colors"
-                            title="Delete Group"
-                          >
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        </div>
-                      </>
+                      </div>
                     )}
                   </div>
                 ))}
@@ -1501,7 +1605,7 @@ export default function Settings() {
             
             {installPlatform === 'windows' && (
               <p className="mt-3 text-xs text-gray-500">
-                💡 The script will automatically handle execution policy and request administrator privileges if needed.
+                💡 命令已包含 TLS 1.2 设置，并自动处理执行策略。请以管理员身份运行 PowerShell。
               </p>
             )}
           </div>

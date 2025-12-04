@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import type { SystemMetrics, SiteSettings, ServerGroup } from '../types';
+import type { SystemMetrics, SiteSettings, ServerGroup, GroupDimension } from '../types';
 
 interface NetworkSpeed {
   rx_sec: number;
@@ -13,7 +13,8 @@ export interface ServerConfig {
   location?: string;
   provider?: string;
   tag?: string;
-  group_id?: string;
+  group_id?: string; // Deprecated
+  group_values?: Record<string, string>; // dimension_id -> option_id
   version?: string;
   // Extended metadata
   price?: {
@@ -40,7 +41,8 @@ export type LoadingState = 'idle' | 'loading' | 'ready' | 'error';
 interface DashboardMessage {
   type: string;
   servers: ServerMetricsUpdate[];
-  groups?: ServerGroup[];
+  groups?: ServerGroup[]; // Deprecated
+  group_dimensions?: GroupDimension[];
   site_settings?: SiteSettings;
 }
 
@@ -74,7 +76,8 @@ interface ServerMetricsUpdate {
   location: string;
   provider: string;
   tag?: string;
-  group_id?: string;
+  group_id?: string; // Deprecated
+  group_values?: Record<string, string>; // dimension_id -> option_id
   version?: string;
   online: boolean;
   metrics: SystemMetrics | null;
@@ -123,6 +126,7 @@ const saveCachedMetrics = (metricsMap: Map<string, SystemMetrics>) => {
 export function useServerManager() {
   const [servers, setServers] = useState<ServerState[]>([]);
   const [_groups, setGroups] = useState<ServerGroup[]>([]);
+  const [groupDimensions, setGroupDimensions] = useState<GroupDimension[]>([]);
   const [siteSettings, setSiteSettings] = useState<SiteSettings>(defaultSiteSettings);
   const [loadingState, setLoadingState] = useState<LoadingState>('loading');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
@@ -205,9 +209,14 @@ export function useServerManager() {
                 setSiteSettings(fullData.site_settings);
               }
               
-              // Update groups if provided
+              // Update groups if provided (deprecated)
               if (fullData.groups) {
                 setGroups(fullData.groups);
+              }
+              
+              // Update group dimensions if provided
+              if (fullData.group_dimensions) {
+                setGroupDimensions(fullData.group_dimensions.sort((a, b) => a.sort_order - b.sort_order));
               }
               
               // Mark initial data as received
@@ -274,6 +283,7 @@ export function useServerManager() {
                     provider: serverUpdate.provider,
                     tag: serverUpdate.tag,
                     group_id: serverUpdate.group_id,
+                    group_values: serverUpdate.group_values,
                     version: serverUpdate.version || serverUpdate.metrics?.version,
                     price: serverUpdate.price_amount ? {
                       amount: serverUpdate.price_amount,
@@ -368,7 +378,7 @@ export function useServerManager() {
     return servers.find(s => s.config.id === id);
   }, [servers]);
 
-  return { servers, groups: _groups, siteSettings, loadingState, isInitialLoad, getServerById };
+  return { servers, groups: _groups, groupDimensions, siteSettings, loadingState, isInitialLoad, getServerById };
 }
 
 export function formatBytes(bytes: number): string {

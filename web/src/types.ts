@@ -92,11 +92,27 @@ export interface PingTarget {
   status: string;
 }
 
-// Server Groups
+// Server Groups (Deprecated - for backward compatibility)
 export interface ServerGroup {
   id: string;
   name: string;
   sort_order: number;
+}
+
+// Group Dimensions - Multi-dimensional grouping
+export interface GroupOption {
+  id: string;
+  name: string;
+  sort_order: number;
+}
+
+export interface GroupDimension {
+  id: string;
+  name: string;
+  key: string;
+  enabled: boolean;
+  sort_order: number;
+  options: GroupOption[];
 }
 
 // Site Settings

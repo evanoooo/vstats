@@ -23,15 +23,16 @@ var (
 )
 
 type LocalNodeConfig struct {
-	Name         string `json:"name"`
-	Location     string `json:"location"`
-	Provider     string `json:"provider"`
-	Tag          string `json:"tag"`
-	GroupID      string `json:"group_id,omitempty"`
-	PriceAmount  string `json:"price_amount,omitempty"`
-	PricePeriod  string `json:"price_period,omitempty"`
-	PurchaseDate string `json:"purchase_date,omitempty"`
-	TipBadge     string `json:"tip_badge,omitempty"`
+	Name         string            `json:"name"`
+	Location     string            `json:"location"`
+	Provider     string            `json:"provider"`
+	Tag          string            `json:"tag"`
+	GroupID      string            `json:"group_id,omitempty"`      // Deprecated, for backward compatibility
+	GroupValues  map[string]string `json:"group_values,omitempty"` // dimension_id -> option_id
+	PriceAmount  string            `json:"price_amount,omitempty"`
+	PricePeriod  string            `json:"price_period,omitempty"`
+	PurchaseDate string            `json:"purchase_date,omitempty"`
+	TipBadge     string            `json:"tip_badge,omitempty"`
 }
 
 type SiteSettings struct {
@@ -76,39 +77,59 @@ type OAuthConfig struct {
 	Google *OAuthProvider `json:"google,omitempty"`
 }
 
+// GroupDimension represents a grouping dimension (e.g., Region, Purpose)
+type GroupDimension struct {
+	ID        string        `json:"id"`
+	Name      string        `json:"name"`
+	Key       string        `json:"key"`        // Unique key for the dimension
+	Enabled   bool          `json:"enabled"`    // Whether this dimension is enabled for grouping
+	SortOrder int           `json:"sort_order"`
+	Options   []GroupOption `json:"options"`
+}
+
+// GroupOption represents an option within a dimension
+type GroupOption struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	SortOrder int    `json:"sort_order"`
+}
+
+// ServerGroup - deprecated, kept for backward compatibility
 type ServerGroup struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
 	SortOrder int    `json:"sort_order"`
 }
 
 type RemoteServer struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	URL          string `json:"url"`
-	Location     string `json:"location"`
-	Provider     string `json:"provider"`
-	Tag          string `json:"tag"`
-	Token        string `json:"token"`
-	Version      string `json:"version"`
-	IP           string `json:"ip"`
-	GroupID      string `json:"group_id,omitempty"`
-	PriceAmount  string `json:"price_amount,omitempty"`
-	PricePeriod  string `json:"price_period,omitempty"`
-	PurchaseDate string `json:"purchase_date,omitempty"`
-	TipBadge     string `json:"tip_badge,omitempty"`
+	ID           string            `json:"id"`
+	Name         string            `json:"name"`
+	URL          string            `json:"url"`
+	Location     string            `json:"location"`
+	Provider     string            `json:"provider"`
+	Tag          string            `json:"tag"`
+	Token        string            `json:"token"`
+	Version      string            `json:"version"`
+	IP           string            `json:"ip"`
+	GroupID      string            `json:"group_id,omitempty"`      // Deprecated, for backward compatibility
+	GroupValues  map[string]string `json:"group_values,omitempty"` // dimension_id -> option_id
+	PriceAmount  string            `json:"price_amount,omitempty"`
+	PricePeriod  string            `json:"price_period,omitempty"`
+	PurchaseDate string            `json:"purchase_date,omitempty"`
+	TipBadge     string            `json:"tip_badge,omitempty"`
 }
 
 type AppConfig struct {
-	AdminPasswordHash string          `json:"admin_password_hash"`
-	JWTSecret         string          `json:"jwt_secret"`
-	Port              string          `json:"port,omitempty"`
-	Servers           []RemoteServer  `json:"servers"`
-	Groups            []ServerGroup   `json:"groups,omitempty"`
-	SiteSettings      SiteSettings    `json:"site_settings"`
-	LocalNode         LocalNodeConfig `json:"local_node"`
-	ProbeSettings     ProbeSettings   `json:"probe_settings"`
-	OAuth             *OAuthConfig    `json:"oauth,omitempty"`
+	AdminPasswordHash string           `json:"admin_password_hash"`
+	JWTSecret         string           `json:"jwt_secret"`
+	Port              string           `json:"port,omitempty"`
+	Servers           []RemoteServer   `json:"servers"`
+	Groups            []ServerGroup    `json:"groups,omitempty"`     // Deprecated, for backward compatibility
+	GroupDimensions   []GroupDimension `json:"group_dimensions,omitempty"`
+	SiteSettings      SiteSettings     `json:"site_settings"`
+	LocalNode         LocalNodeConfig  `json:"local_node"`
+	ProbeSettings     ProbeSettings    `json:"probe_settings"`
+	OAuth             *OAuthConfig     `json:"oauth,omitempty"`
 }
 
 func getExeDir() string {
@@ -160,6 +181,46 @@ func GenerateRandomString(length int) string {
 	return string(result)
 }
 
+// GetDefaultGroupDimensions returns the default group dimensions
+func GetDefaultGroupDimensions() []GroupDimension {
+	return []GroupDimension{
+		{
+			ID:        "region",
+			Name:      "地区",
+			Key:       "region",
+			Enabled:   true,
+			SortOrder: 0,
+			Options: []GroupOption{
+				{ID: "asia", Name: "亚洲", SortOrder: 0},
+				{ID: "america", Name: "美洲", SortOrder: 1},
+				{ID: "europe", Name: "欧洲", SortOrder: 2},
+				{ID: "other", Name: "其他", SortOrder: 3},
+			},
+		},
+		{
+			ID:        "purpose",
+			Name:      "用途",
+			Key:       "purpose",
+			Enabled:   true,
+			SortOrder: 1,
+			Options: []GroupOption{
+				{ID: "production", Name: "生产", SortOrder: 0},
+				{ID: "staging", Name: "预发", SortOrder: 1},
+				{ID: "development", Name: "开发", SortOrder: 2},
+				{ID: "testing", Name: "测试", SortOrder: 3},
+			},
+		},
+		{
+			ID:        "group",
+			Name:      "分组",
+			Key:       "group",
+			Enabled:   false,
+			SortOrder: 2,
+			Options:   []GroupOption{},
+		},
+	}
+}
+
 func NewAppConfigWithRandomPassword() (*AppConfig, string) {
 	password := GenerateRandomString(16)
 	hash, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -168,6 +229,7 @@ func NewAppConfigWithRandomPassword() (*AppConfig, string) {
 		JWTSecret:         GenerateRandomString(64),
 		Servers:           []RemoteServer{},
 		Groups:            []ServerGroup{},
+		GroupDimensions:   GetDefaultGroupDimensions(),
 		SiteSettings: SiteSettings{
 			SiteName:        "vStats Dashboard",
 			SiteDescription: "Real-time Server Monitoring",
@@ -225,6 +287,13 @@ func LoadConfig() (*AppConfig, *string) {
 		if config.JWTSecret == "" {
 			config.JWTSecret = GenerateRandomString(64)
 			SaveConfig(&config)
+		}
+
+		// Initialize default group dimensions if not present
+		if len(config.GroupDimensions) == 0 {
+			config.GroupDimensions = GetDefaultGroupDimensions()
+			SaveConfig(&config)
+			fmt.Println("✅ Initialized default group dimensions")
 		}
 
 		InitJWTSecret(config.JWTSecret)

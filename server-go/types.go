@@ -183,32 +183,34 @@ type OAuthLoginResponse struct {
 // ============================================================================
 
 type AddServerRequest struct {
-	Name         string `json:"name"`
-	URL          string `json:"url"`
-	Location     string `json:"location"`
-	Provider     string `json:"provider"`
-	Tag          string `json:"tag"`
-	GroupID      string `json:"group_id,omitempty"`
-	PriceAmount  string `json:"price_amount,omitempty"`
-	PricePeriod  string `json:"price_period,omitempty"`
-	PurchaseDate string `json:"purchase_date,omitempty"`
-	TipBadge     string `json:"tip_badge,omitempty"`
+	Name         string            `json:"name"`
+	URL          string            `json:"url"`
+	Location     string            `json:"location"`
+	Provider     string            `json:"provider"`
+	Tag          string            `json:"tag"`
+	GroupID      string            `json:"group_id,omitempty"`      // Deprecated
+	GroupValues  map[string]string `json:"group_values,omitempty"` // dimension_id -> option_id
+	PriceAmount  string            `json:"price_amount,omitempty"`
+	PricePeriod  string            `json:"price_period,omitempty"`
+	PurchaseDate string            `json:"purchase_date,omitempty"`
+	TipBadge     string            `json:"tip_badge,omitempty"`
 }
 
 type UpdateServerRequest struct {
-	Name         *string `json:"name,omitempty"`
-	Location     *string `json:"location,omitempty"`
-	Provider     *string `json:"provider,omitempty"`
-	Tag          *string `json:"tag,omitempty"`
-	GroupID      *string `json:"group_id,omitempty"`
-	PriceAmount  *string `json:"price_amount,omitempty"`
-	PricePeriod  *string `json:"price_period,omitempty"`
-	PurchaseDate *string `json:"purchase_date,omitempty"`
-	TipBadge     *string `json:"tip_badge,omitempty"`
+	Name         *string            `json:"name,omitempty"`
+	Location     *string            `json:"location,omitempty"`
+	Provider     *string            `json:"provider,omitempty"`
+	Tag          *string            `json:"tag,omitempty"`
+	GroupID      *string            `json:"group_id,omitempty"`      // Deprecated
+	GroupValues  *map[string]string `json:"group_values,omitempty"` // dimension_id -> option_id
+	PriceAmount  *string            `json:"price_amount,omitempty"`
+	PricePeriod  *string            `json:"price_period,omitempty"`
+	PurchaseDate *string            `json:"purchase_date,omitempty"`
+	TipBadge     *string            `json:"tip_badge,omitempty"`
 }
 
 // ============================================================================
-// Group Management Types
+// Group Management Types (Deprecated - for backward compatibility)
 // ============================================================================
 
 type AddGroupRequest struct {
@@ -217,6 +219,33 @@ type AddGroupRequest struct {
 }
 
 type UpdateGroupRequest struct {
+	Name      *string `json:"name,omitempty"`
+	SortOrder *int    `json:"sort_order,omitempty"`
+}
+
+// ============================================================================
+// Dimension Management Types
+// ============================================================================
+
+type AddDimensionRequest struct {
+	Name      string `json:"name"`
+	Key       string `json:"key"`
+	Enabled   bool   `json:"enabled"`
+	SortOrder int    `json:"sort_order"`
+}
+
+type UpdateDimensionRequest struct {
+	Name      *string `json:"name,omitempty"`
+	Enabled   *bool   `json:"enabled,omitempty"`
+	SortOrder *int    `json:"sort_order,omitempty"`
+}
+
+type AddOptionRequest struct {
+	Name      string `json:"name"`
+	SortOrder int    `json:"sort_order"`
+}
+
+type UpdateOptionRequest struct {
 	Name      *string `json:"name,omitempty"`
 	SortOrder *int    `json:"sort_order,omitempty"`
 }
@@ -276,27 +305,29 @@ type AgentMetricsData struct {
 }
 
 type DashboardMessage struct {
-	Type         string                `json:"type"`
-	Servers      []ServerMetricsUpdate `json:"servers"`
-	Groups       []ServerGroup         `json:"groups,omitempty"`
-	SiteSettings *SiteSettings         `json:"site_settings,omitempty"`
+	Type            string                `json:"type"`
+	Servers         []ServerMetricsUpdate `json:"servers"`
+	Groups          []ServerGroup         `json:"groups,omitempty"`          // Deprecated
+	GroupDimensions []GroupDimension      `json:"group_dimensions,omitempty"`
+	SiteSettings    *SiteSettings         `json:"site_settings,omitempty"`
 }
 
 type ServerMetricsUpdate struct {
-	ServerID     string         `json:"server_id"`
-	ServerName   string         `json:"server_name"`
-	Location     string         `json:"location"`
-	Provider     string         `json:"provider"`
-	Tag          string         `json:"tag"`
-	GroupID      string         `json:"group_id,omitempty"`
-	Version      string         `json:"version"`
-	IP           string         `json:"ip"`
-	Online       bool           `json:"online"`
-	Metrics      *SystemMetrics `json:"metrics"`
-	PriceAmount  string         `json:"price_amount,omitempty"`
-	PricePeriod  string         `json:"price_period,omitempty"`
-	PurchaseDate string         `json:"purchase_date,omitempty"`
-	TipBadge     string         `json:"tip_badge,omitempty"`
+	ServerID     string            `json:"server_id"`
+	ServerName   string            `json:"server_name"`
+	Location     string            `json:"location"`
+	Provider     string            `json:"provider"`
+	Tag          string            `json:"tag"`
+	GroupID      string            `json:"group_id,omitempty"`      // Deprecated
+	GroupValues  map[string]string `json:"group_values,omitempty"` // dimension_id -> option_id
+	Version      string            `json:"version"`
+	IP           string            `json:"ip"`
+	Online       bool              `json:"online"`
+	Metrics      *SystemMetrics    `json:"metrics"`
+	PriceAmount  string            `json:"price_amount,omitempty"`
+	PricePeriod  string            `json:"price_period,omitempty"`
+	PurchaseDate string            `json:"purchase_date,omitempty"`
+	TipBadge     string            `json:"tip_badge,omitempty"`
 }
 
 type DeltaMessage struct {

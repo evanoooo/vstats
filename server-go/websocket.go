@@ -87,6 +87,7 @@ func (s *AppState) sendInitialState(conn *websocket.Conn) {
 		Provider:     provider,
 		Tag:          localNode.Tag,
 		GroupID:      localNode.GroupID,
+		GroupValues:  localNode.GroupValues,
 		Version:      ServerVersion,
 		IP:           "",
 		Online:       true,
@@ -122,6 +123,7 @@ func (s *AppState) sendInitialState(conn *websocket.Conn) {
 			Provider:     server.Provider,
 			Tag:          server.Tag,
 			GroupID:      server.GroupID,
+			GroupValues:  server.GroupValues,
 			Version:      version,
 			IP:           server.IP,
 			Online:       online,
@@ -134,10 +136,11 @@ func (s *AppState) sendInitialState(conn *websocket.Conn) {
 	}
 
 	msg := DashboardMessage{
-		Type:         "metrics",
-		Servers:      updates,
-		Groups:       config.Groups,
-		SiteSettings: &config.SiteSettings,
+		Type:            "metrics",
+		Servers:         updates,
+		Groups:          config.Groups,
+		GroupDimensions: config.GroupDimensions,
+		SiteSettings:    &config.SiteSettings,
 	}
 
 	data, _ := json.Marshal(msg)

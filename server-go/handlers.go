@@ -792,6 +792,10 @@ func (s *AppState) UpdateProbeSettings(c *gin.Context) {
 	SaveConfig(s.Config)
 	s.ConfigMu.Unlock()
 
+	// Update local collector's ping targets
+	localCollector := GetLocalCollector()
+	localCollector.SetPingTargets(settings.PingTargets)
+
 	c.Status(http.StatusOK)
 }
 
@@ -821,6 +825,7 @@ func (s *AppState) AddServer(c *gin.Context) {
 		Tag:          req.Tag,
 		Token:        uuid.New().String(),
 		GroupID:      req.GroupID,
+		GroupValues:  req.GroupValues,
 		PriceAmount:  req.PriceAmount,
 		PricePeriod:  req.PricePeriod,
 		PurchaseDate: req.PurchaseDate,
@@ -885,6 +890,9 @@ func (s *AppState) UpdateServer(c *gin.Context) {
 			}
 			if req.GroupID != nil {
 				s.Config.Servers[i].GroupID = *req.GroupID
+			}
+			if req.GroupValues != nil {
+				s.Config.Servers[i].GroupValues = *req.GroupValues
 			}
 			if req.PriceAmount != nil {
 				s.Config.Servers[i].PriceAmount = *req.PriceAmount
@@ -1015,6 +1023,260 @@ func (s *AppState) DeleteGroup(c *gin.Context) {
 	SaveConfig(s.Config)
 	s.ConfigMu.Unlock()
 
+	c.Status(http.StatusOK)
+}
+
+// ============================================================================
+// Dimension Management Handlers
+// ============================================================================
+
+func (s *AppState) GetDimensions(c *gin.Context) {
+	s.ConfigMu.RLock()
+	defer s.ConfigMu.RUnlock()
+	
+	dimensions := s.Config.GroupDimensions
+	if dimensions == nil {
+		dimensions = []GroupDimension{}
+	}
+	c.JSON(http.StatusOK, dimensions)
+}
+
+func (s *AppState) AddDimension(c *gin.Context) {
+	var req AddDimensionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	s.ConfigMu.Lock()
+	defer s.ConfigMu.Unlock()
+
+	// Check if key already exists
+	for _, d := range s.Config.GroupDimensions {
+		if d.Key == req.Key {
+			c.JSON(http.StatusConflict, gin.H{"error": "Dimension key already exists"})
+			return
+		}
+	}
+
+	dimension := GroupDimension{
+		ID:        uuid.New().String(),
+		Name:      req.Name,
+		Key:       req.Key,
+		Enabled:   req.Enabled,
+		SortOrder: req.SortOrder,
+		Options:   []GroupOption{},
+	}
+
+	if s.Config.GroupDimensions == nil {
+		s.Config.GroupDimensions = []GroupDimension{}
+	}
+	s.Config.GroupDimensions = append(s.Config.GroupDimensions, dimension)
+	SaveConfig(s.Config)
+
+	c.JSON(http.StatusOK, dimension)
+}
+
+func (s *AppState) UpdateDimension(c *gin.Context) {
+	id := c.Param("id")
+
+	var req UpdateDimensionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	s.ConfigMu.Lock()
+	defer s.ConfigMu.Unlock()
+
+	var updated *GroupDimension
+	for i := range s.Config.GroupDimensions {
+		if s.Config.GroupDimensions[i].ID == id {
+			if req.Name != nil {
+				s.Config.GroupDimensions[i].Name = *req.Name
+			}
+			if req.Enabled != nil {
+				s.Config.GroupDimensions[i].Enabled = *req.Enabled
+			}
+			if req.SortOrder != nil {
+				s.Config.GroupDimensions[i].SortOrder = *req.SortOrder
+			}
+			updated = &s.Config.GroupDimensions[i]
+			break
+		}
+	}
+
+	if updated == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Dimension not found"})
+		return
+	}
+
+	SaveConfig(s.Config)
+	c.JSON(http.StatusOK, updated)
+}
+
+func (s *AppState) DeleteDimension(c *gin.Context) {
+	id := c.Param("id")
+
+	s.ConfigMu.Lock()
+	defer s.ConfigMu.Unlock()
+
+	// Remove dimension
+	dimensions := make([]GroupDimension, 0)
+	for _, d := range s.Config.GroupDimensions {
+		if d.ID != id {
+			dimensions = append(dimensions, d)
+		}
+	}
+	s.Config.GroupDimensions = dimensions
+
+	// Clear group values from servers
+	for i := range s.Config.Servers {
+		if s.Config.Servers[i].GroupValues != nil {
+			delete(s.Config.Servers[i].GroupValues, id)
+		}
+	}
+
+	// Clear from local node
+	if s.Config.LocalNode.GroupValues != nil {
+		delete(s.Config.LocalNode.GroupValues, id)
+	}
+
+	SaveConfig(s.Config)
+	c.Status(http.StatusOK)
+}
+
+// ============================================================================
+// Dimension Option Handlers
+// ============================================================================
+
+func (s *AppState) AddOption(c *gin.Context) {
+	dimID := c.Param("dimension_id")
+
+	var req AddOptionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	s.ConfigMu.Lock()
+	defer s.ConfigMu.Unlock()
+
+	var dimension *GroupDimension
+	for i := range s.Config.GroupDimensions {
+		if s.Config.GroupDimensions[i].ID == dimID {
+			dimension = &s.Config.GroupDimensions[i]
+			break
+		}
+	}
+
+	if dimension == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Dimension not found"})
+		return
+	}
+
+	option := GroupOption{
+		ID:        uuid.New().String(),
+		Name:      req.Name,
+		SortOrder: req.SortOrder,
+	}
+
+	dimension.Options = append(dimension.Options, option)
+	SaveConfig(s.Config)
+
+	c.JSON(http.StatusOK, option)
+}
+
+func (s *AppState) UpdateOption(c *gin.Context) {
+	dimID := c.Param("dimension_id")
+	optID := c.Param("option_id")
+
+	var req UpdateOptionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	s.ConfigMu.Lock()
+	defer s.ConfigMu.Unlock()
+
+	var updated *GroupOption
+	for i := range s.Config.GroupDimensions {
+		if s.Config.GroupDimensions[i].ID == dimID {
+			for j := range s.Config.GroupDimensions[i].Options {
+				if s.Config.GroupDimensions[i].Options[j].ID == optID {
+					if req.Name != nil {
+						s.Config.GroupDimensions[i].Options[j].Name = *req.Name
+					}
+					if req.SortOrder != nil {
+						s.Config.GroupDimensions[i].Options[j].SortOrder = *req.SortOrder
+					}
+					updated = &s.Config.GroupDimensions[i].Options[j]
+					break
+				}
+			}
+			break
+		}
+	}
+
+	if updated == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Option not found"})
+		return
+	}
+
+	SaveConfig(s.Config)
+	c.JSON(http.StatusOK, updated)
+}
+
+func (s *AppState) DeleteOption(c *gin.Context) {
+	dimID := c.Param("dimension_id")
+	optID := c.Param("option_id")
+
+	s.ConfigMu.Lock()
+	defer s.ConfigMu.Unlock()
+
+	found := false
+	for i := range s.Config.GroupDimensions {
+		if s.Config.GroupDimensions[i].ID == dimID {
+			options := make([]GroupOption, 0)
+			for _, o := range s.Config.GroupDimensions[i].Options {
+				if o.ID != optID {
+					options = append(options, o)
+				} else {
+					found = true
+				}
+			}
+			s.Config.GroupDimensions[i].Options = options
+			break
+		}
+	}
+
+	if !found {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Option not found"})
+		return
+	}
+
+	// Clear this option from servers
+	for i := range s.Config.Servers {
+		if s.Config.Servers[i].GroupValues != nil {
+			for k, v := range s.Config.Servers[i].GroupValues {
+				if v == optID {
+					delete(s.Config.Servers[i].GroupValues, k)
+				}
+			}
+		}
+	}
+
+	// Clear from local node
+	if s.Config.LocalNode.GroupValues != nil {
+		for k, v := range s.Config.LocalNode.GroupValues {
+			if v == optID {
+				delete(s.Config.LocalNode.GroupValues, k)
+			}
+		}
+	}
+
+	SaveConfig(s.Config)
 	c.Status(http.StatusOK)
 }
 
