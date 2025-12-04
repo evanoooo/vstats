@@ -244,7 +244,7 @@ function HistoryChart({ serverId }: { serverId: string }) {
           </div>
         </div>
         <div className="h-48 w-full">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
             <LineChart data={sampledData} margin={{ top: 5, right: 5, left: -15, bottom: 5 }}>
               <CartesianGrid 
                 strokeDasharray="3 3" 
@@ -265,7 +265,7 @@ function HistoryChart({ serverId }: { serverId: string }) {
                 tickLine={false}
                 tick={{ fill: chartTheme.tickColor, fontSize: 10 }}
                 tickFormatter={formatValue}
-                width={50}
+                width={55}
               />
               <Tooltip
                 content={
@@ -308,7 +308,7 @@ function HistoryChart({ serverId }: { serverId: string }) {
   }) => {
     return (
       <div className="h-72 w-full">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
           <LineChart data={sampledData} margin={{ top: 5, right: 5, left: -15, bottom: 5 }}>
             <CartesianGrid 
               strokeDasharray="3 3" 
@@ -374,7 +374,7 @@ function HistoryChart({ serverId }: { serverId: string }) {
     return (
       <div className="space-y-6">
         <div className="h-56 w-full">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
             <LineChart data={sampledData} margin={{ top: 5, right: 5, left: -5, bottom: 5 }}>
               <CartesianGrid 
                 strokeDasharray="3 3" 
@@ -755,7 +755,7 @@ function HistoryChart({ serverId }: { serverId: string }) {
 
               {/* Combined chart */}
               <div className="h-56 w-full">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <LineChart data={combinedPingData} margin={{ top: 5, right: 5, left: -15, bottom: 5 }}>
                     <CartesianGrid 
                       strokeDasharray="3 3" 
@@ -779,7 +779,7 @@ function HistoryChart({ serverId }: { serverId: string }) {
                     />
                     <Tooltip content={<PingCombinedTooltip />} />
                     <Legend 
-                      verticalAlign="top" 
+                      verticalAlign="bottom" 
                       height={36}
                       iconType="circle"
                       iconSize={8}
@@ -855,7 +855,7 @@ function HistoryChart({ serverId }: { serverId: string }) {
               </div>
             </div>
             <div className="h-48 w-full">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <LineChart data={pingChartData} margin={{ top: 5, right: 5, left: -15, bottom: 5 }}>
                   <CartesianGrid 
                     strokeDasharray="3 3" 
