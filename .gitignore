@@ -13,3 +13,7 @@ web/dist/
 releases/
 vstats-agent-dev
 vstats-server-dev
+oauth-proxy/node_modules
+
+# OAuth Proxy
+oauth-proxy/node_modules/
