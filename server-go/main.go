@@ -175,7 +175,11 @@ func main() {
 		})
 	}
 
-	port := os.Getenv("VSTATS_PORT")
+	// Get port with priority: config > environment variable > default
+	port := config.Port
+	if port == "" {
+		port = os.Getenv("VSTATS_PORT")
+	}
 	if port == "" {
 		port = "3001"
 	}

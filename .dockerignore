@@ -1,0 +1,70 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+README.md
+docs/
+doc/
+desgin/
+
+# Development files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build artifacts
+vstats-server-dev
+vstats-agent-dev
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test files
+test-data/
+test-web/
+
+# Node modules (will be installed in container)
+web/node_modules/
+web/dist/
+
+# Go build cache
+**/go.sum
+**/go.mod
+!server-go/go.mod
+!server-go/go.sum
+!agent-go/go.mod
+!agent-go/go.sum
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+
+# Config files (should be mounted as volumes)
+vstats-config.json
+*.json
+!web/package.json
+!web/package-lock.json
+
+# Releases
+releases/
+
+# Scripts (not needed in container)
+scripts/
+docs/agent.ps1
+docs/agent.sh
+docs/install.sh
+
+# CI/CD
+.github/
+
+# OS files
+.DS_Store
+Thumbs.db
+

@@ -56,7 +56,33 @@
 
 ## 🚀 一键安装
 
-### 安装主控端 (Dashboard)
+### 🐳 Docker 部署（推荐）
+
+使用 Docker 一键部署，无需手动安装依赖：
+
+
+```bash
+# 创建数据目录
+mkdir -p data
+
+# 运行容器
+docker run -d \
+  --name vstats-server \
+  -p 3001:3001 \
+  -v $(pwd)/data:/app/data \
+  --restart unless-stopped \
+  zsai001/vstats-server:latest
+
+# 查看日志
+docker logs -f vstats-server
+```
+
+**首次运行后，请保存显示的初始管理员密码！**
+
+访问：`http://your-server-ip:3001`
+
+
+### 手动安装 (Dashboard)
 
 ```bash
 curl -fsSL https://vstats.zsoft.cc/install.sh | sudo bash

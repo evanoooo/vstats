@@ -1,0 +1,50 @@
+version: '3.8'
+
+# Example docker-compose configuration
+# Copy this file to docker-compose.yml and customize as needed
+
+services:
+  vstats-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vstats-server
+    restart: unless-stopped
+    ports:
+      # Map host port to container port
+      # Format: "HOST_PORT:CONTAINER_PORT"
+      # Example: "3001:3001" or "8080:3001" to access via host port 8080
+      - "3001:3001"
+    environment:
+      # Port can be set via environment variable (overridden by config file)
+      - VSTATS_PORT=3001
+      # Web directory is set automatically, but can be overridden
+      - VSTATS_WEB_DIR=/app/web/dist
+    volumes:
+      # Persistent data directory (config and database)
+      # This ensures data persists across container restarts
+      - ./data:/app/data
+      
+      # Optional: Mount a custom config file
+      # Uncomment the line below and provide your config file path
+      # - ./vstats-config.json:/app/data/vstats-config.json:ro
+      
+      # Optional: Mount only the database for backup purposes
+      # - ./data/vstats.db:/app/data/vstats.db
+    working_dir: /app/data
+    # Resource limits (optional)
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '1'
+    #       memory: 512M
+    #     reservations:
+    #       cpus: '0.5'
+    #       memory: 256M
+    networks:
+      - vstats-network
+
+networks:
+  vstats-network:
+    driver: bridge
+

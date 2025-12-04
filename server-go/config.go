@@ -73,6 +73,7 @@ type RemoteServer struct {
 type AppConfig struct {
 	AdminPasswordHash string          `json:"admin_password_hash"`
 	JWTSecret         string          `json:"jwt_secret"`
+	Port              string          `json:"port,omitempty"`
 	Servers           []RemoteServer  `json:"servers"`
 	SiteSettings      SiteSettings    `json:"site_settings"`
 	LocalNode         LocalNodeConfig `json:"local_node"`
@@ -88,10 +89,18 @@ func getExeDir() string {
 }
 
 func GetConfigPath() string {
+	// Allow override via environment variable
+	if configPath := os.Getenv("VSTATS_CONFIG_PATH"); configPath != "" {
+		return configPath
+	}
 	return filepath.Join(getExeDir(), ConfigFilename)
 }
 
 func GetDBPath() string {
+	// Allow override via environment variable
+	if dbPath := os.Getenv("VSTATS_DB_PATH"); dbPath != "" {
+		return dbPath
+	}
 	return filepath.Join(getExeDir(), DBFilename)
 }
 

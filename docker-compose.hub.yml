@@ -1,0 +1,36 @@
+version: '3.8'
+
+# Docker Compose configuration using Docker Hub image
+# This is the recommended way to deploy vStats Server
+
+services:
+  vstats-server:
+    image: zsai001/vstats-server:latest
+    container_name: vstats-server
+    restart: unless-stopped
+    ports:
+      - "${VSTATS_PORT:-3001}:3001"
+    environment:
+      - VSTATS_PORT=${VSTATS_PORT:-3001}
+      - VSTATS_WEB_DIR=/app/web/dist
+      - VSTATS_CONFIG_PATH=/app/data/vstats-config.json
+      - VSTATS_DB_PATH=/app/data/vstats.db
+    volumes:
+      # Mount data directory for persistent storage
+      # Config file and database will be stored here
+      - ./data:/app/data
+      # Optional: mount custom config file
+      # - ./vstats-config.json:/app/data/vstats-config.json:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - vstats-network
+
+networks:
+  vstats-network:
+    driver: bridge
+
