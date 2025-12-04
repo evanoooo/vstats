@@ -148,6 +148,161 @@
     .dark .tag { background: rgba(75, 85, 99, 0.3); color: #e5e7eb; border: 1px solid #6b7280; }
     .light .tag { background: rgba(229, 231, 235, 0.9); color: #374151; border: 1px solid #d1d5db; }
 
+    /* 印章样式标签 - Stamp Style */
+    .tip-badge {
+      position: absolute;
+      bottom: 55px;
+      right: 10px;
+      width: 46px;
+      height: 46px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-weight: 900;
+      letter-spacing: 0.03em;
+      border-radius: 50%;
+      z-index: 10;
+      transform: rotate(-12deg);
+      white-space: nowrap;
+      text-align: center;
+      line-height: 1.1;
+      /* 印章做旧效果 */
+      mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+      mask-composite: intersect;
+      -webkit-mask-composite: source-in;
+    }
+    .tip-badge::before {
+      content: '';
+      position: absolute;
+      inset: 3px;
+      border-radius: 50%;
+      border: 2px dashed currentColor;
+      opacity: 0.5;
+    }
+    .tip-badge::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: inherit;
+      opacity: 0.15;
+      filter: blur(8px);
+      z-index: -1;
+    }
+    
+    /* 印章颜色主题 */
+    .tip-badge.cn3-opt {
+      color: #16a34a;
+      background: transparent;
+      border: 3px solid #16a34a;
+      box-shadow: inset 0 0 0 1px #16a34a, 0 0 20px rgba(22, 163, 74, 0.3);
+    }
+    .tip-badge.cn3-gia {
+      color: #d97706;
+      background: transparent;
+      border: 3px solid #d97706;
+      box-shadow: inset 0 0 0 1px #d97706, 0 0 20px rgba(217, 119, 6, 0.3);
+    }
+    .tip-badge.big-disk {
+      color: #7c3aed;
+      background: transparent;
+      border: 3px solid #7c3aed;
+      box-shadow: inset 0 0 0 1px #7c3aed, 0 0 20px rgba(124, 58, 237, 0.3);
+    }
+    .tip-badge.perf {
+      color: #2563eb;
+      background: transparent;
+      border: 3px solid #2563eb;
+      box-shadow: inset 0 0 0 1px #2563eb, 0 0 20px rgba(37, 99, 235, 0.3);
+    }
+    .tip-badge.landing {
+      color: #0891b2;
+      background: transparent;
+      border: 3px solid #0891b2;
+      box-shadow: inset 0 0 0 1px #0891b2, 0 0 20px rgba(8, 145, 178, 0.3);
+    }
+    .tip-badge.dufu {
+      color: #dc2626;
+      background: transparent;
+      border: 3px solid #dc2626;
+      box-shadow: inset 0 0 0 1px #dc2626, 0 0 20px rgba(220, 38, 38, 0.3);
+    }
+    
+    /* 浅色主题印章加深 */
+    .light .tip-badge { opacity: 0.85; }
+
+    /* List view 印章 - 右侧圆形，不影响布局 */
+    .list-tip-badge {
+      position: absolute;
+      right: 16px;
+      top: 50%;
+      transform: translateY(-50%) rotate(12deg);
+      width: 52px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-weight: 900;
+      letter-spacing: 0.05em;
+      border-radius: 50%;
+      text-align: center;
+      line-height: 1.1;
+      z-index: 0;
+      opacity: 0.6;
+      pointer-events: none;
+      mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+      mask-composite: intersect;
+      -webkit-mask-composite: source-in;
+    }
+    .list-tip-badge::before {
+      content: '';
+      position: absolute;
+      inset: 3px;
+      border-radius: 50%;
+      border: 2px dashed currentColor;
+      opacity: 0.5;
+    }
+    
+    .list-tip-badge.cn3-opt {
+      color: #16a34a;
+      background: transparent;
+      border: 3px solid #16a34a;
+      box-shadow: inset 0 0 0 1px #16a34a, 0 0 15px rgba(22, 163, 74, 0.25);
+    }
+    .list-tip-badge.cn3-gia {
+      color: #d97706;
+      background: transparent;
+      border: 3px solid #d97706;
+      box-shadow: inset 0 0 0 1px #d97706, 0 0 15px rgba(217, 119, 6, 0.25);
+    }
+    .list-tip-badge.big-disk {
+      color: #7c3aed;
+      background: transparent;
+      border: 3px solid #7c3aed;
+      box-shadow: inset 0 0 0 1px #7c3aed, 0 0 15px rgba(124, 58, 237, 0.25);
+    }
+    .list-tip-badge.perf {
+      color: #2563eb;
+      background: transparent;
+      border: 3px solid #2563eb;
+      box-shadow: inset 0 0 0 1px #2563eb, 0 0 15px rgba(37, 99, 235, 0.25);
+    }
+    .list-tip-badge.landing {
+      color: #0891b2;
+      background: transparent;
+      border: 3px solid #0891b2;
+      box-shadow: inset 0 0 0 1px #0891b2, 0 0 15px rgba(8, 145, 178, 0.25);
+    }
+    .list-tip-badge.dufu {
+      color: #dc2626;
+      background: transparent;
+      border: 3px solid #dc2626;
+      box-shadow: inset 0 0 0 1px #dc2626, 0 0 15px rgba(220, 38, 38, 0.25);
+    }
+    .light .list-tip-badge { opacity: 0.85; }
+
     /* Resources */
     .resources { display: flex; flex-direction: column; gap: 0.5rem; }
     .res-row { display: flex; gap: 0.5rem; align-items: stretch; }
@@ -242,8 +397,10 @@
       display: flex; flex-direction: column; gap: 1rem;
       padding: 1rem 1.25rem; border-radius: var(--radius); border: 1px solid;
       backdrop-filter: blur(24px); transition: transform 0.2s;
+      position: relative; overflow: hidden;
     }
-    @media (min-width: 1024px) { .list-card { flex-direction: row; align-items: center; } }
+    @media (min-width: 1024px) { .list-card { flex-direction: row; align-items: stretch; } }
+    /* 列表视图印章不影响布局 */
     .dark .list-card { background: var(--card-bg-dark); border-color: var(--card-border-dark); box-shadow: var(--card-shadow-dark); }
     .light .list-card { background: var(--card-bg-light); border-color: var(--card-border-light); box-shadow: var(--card-shadow-light); }
     .list-card:hover { transform: translateY(-2px); }
@@ -543,8 +700,19 @@
   </div>
 
   <script>
+    // tip 类型映射
+    const tipTypes = {
+      'cn3-opt': '三网优化',
+      'cn3-gia': '三网 GIA',
+      'big-disk': '大盘鸡',
+      'perf': '性能机',
+      'landing': '落地机',
+      'dufu': '杜甫'
+    };
+
     const servers = [
       { name: 'Production Server', os: 'ubuntu', provider: 'aws', flag: '🇺🇸', loc: 'US', uptime: '2d 5h',
+        tip: 'cn3-gia',
         price: { amount: '$89.99', period: 'month' },
         remainingValue: '$67.49',
         purchaseDate: '2024-01-15',
@@ -555,6 +723,7 @@
         net: { up: '12.5 MB/s', down: '45.8 MB/s', pct: 28, status: 'ok', bandwidth: '1 Gbps', traffic: { used: '2.3T', total: '5T' } }
       },
       { name: 'Database Server', os: 'debian', provider: 'digitalocean', flag: '🇸🇬', loc: 'SG', uptime: '1d 12h',
+        tip: 'cn3-opt',
         price: { amount: '$48.00', period: 'month' },
         remainingValue: '$24.00',
         purchaseDate: '2024-02-20',
@@ -565,6 +734,7 @@
         net: { up: '8.2 MB/s', down: '23.1 MB/s', pct: 15, status: 'ok', bandwidth: '500 Mbps', traffic: { used: '850G', total: '2T' } }
       },
       { name: 'Web Server', os: 'centos', provider: 'vultr', flag: '🇯🇵', loc: 'JP', uptime: '5h 23m',
+        tip: 'big-disk',
         price: { amount: '$24.00', period: 'month' },
         remainingValue: '$18.00',
         purchaseDate: '2024-03-10',
@@ -575,6 +745,7 @@
         net: { up: '5.1 MB/s', down: '18.7 MB/s', pct: 12, status: 'ok', bandwidth: '100 Mbps', traffic: { used: '120G', total: '500G' } }
       },
       { name: 'Cache Server', os: 'fedora', provider: 'azure', flag: '🇩🇪', loc: 'DE', uptime: '3d 8h',
+        tip: 'perf',
         price: { amount: '$299.00', period: 'year' },
         remainingValue: '$199.33',
         purchaseDate: '2023-12-05',
@@ -624,8 +795,10 @@
         'azure': '../web/public/logos/providers/azure.svg'
       };
       const providerLogo = s.provider ? providerLogos[s.provider] : null;
+      const tipLabel = s.tip ? tipTypes[s.tip] : null;
       return `
         <div class="card">
+          ${tipLabel ? `<div class="tip-badge ${s.tip}">${tipLabel}</div>` : ''}
           <div class="card-header">
             <div class="card-identity">
               <div class="avatar"><img src="${osLogoUrl}" width="24" height="24" onerror="this.src='${osLogoUrl.replace('.svg', '.png')}'"></div>
@@ -643,7 +816,7 @@
             ${renderRes('cpu', `${s.cpu.model} · ${s.cpu.cores} cores`, s.cpu.pct, s.cpu.status)}
             ${renderRes('ram', `${s.ram.size} · ${s.ram.type}`, s.ram.pct, s.ram.status)}
             ${renderRes('disk', `${s.disk.type} · ${s.disk.size} total`, s.disk.pct, s.disk.status)}
-            ${renderRes('net', `↑ ${s.net.up} · ↓ ${s.net.down}`, s.net.pct, s.net.status, s.net.bandwidth ? `${s.net.bandwidth} · ${s.net.traffic.used}/${s.net.traffic.total}` : '')}
+            ${renderRes('net', s.net.bandwidth ? `${s.net.bandwidth} · ${s.net.traffic.total}` : '', s.net.pct, s.net.status, `↑ ${s.net.up} · ↓ ${s.net.down}${s.net.traffic ? ` · 已用 ${s.net.traffic.used}` : ''}`)}
           </div>
           <div class="card-footer">
             <div class="footer-row-price">
@@ -693,8 +866,9 @@
         'azure': '../web/public/logos/providers/azure.svg'
       };
       const providerLogo = s.provider ? providerLogos[s.provider] : null;
+      const tipLabel = s.tip ? tipTypes[s.tip] : null;
       return `
-        <div class="list-card">
+        <div class="list-card ${s.tip ? 'has-ribbon' : ''}">
           <div class="list-identity">
             <div class="avatar"><img src="${osLogoUrl}" width="24" height="24" onerror="this.src='${osLogoUrl.replace('.svg', '.png')}'"></div>
             <div class="list-info">
@@ -710,7 +884,7 @@
               ${renderRes('cpu', `${s.cpu.model} · ${s.cpu.cores} cores`, s.cpu.pct, s.cpu.status)}
               ${renderRes('ram', `${s.ram.size} · ${s.ram.type}`, s.ram.pct, s.ram.status)}
               ${renderRes('disk', `${s.disk.type} · ${s.disk.size} total`, s.disk.pct, s.disk.status)}
-              ${renderRes('net', `↑ ${s.net.up} · ↓ ${s.net.down}${s.net.bandwidth ? ` · ${s.net.bandwidth}` : ''}${s.net.traffic ? ` · ${s.net.traffic.used}/${s.net.traffic.total}` : ''}`, s.net.pct, s.net.status)}
+              ${renderRes('net', s.net.bandwidth ? `${s.net.bandwidth} · ${s.net.traffic.total}` : '', s.net.pct, s.net.status, `↑ ${s.net.up} · ↓ ${s.net.down}${s.net.traffic ? ` · 已用 ${s.net.traffic.used}` : ''}`)}
             </div>
           </div>
           <div class="list-footer">
@@ -749,6 +923,7 @@
               </div>
             </div>
           </div>
+          ${tipLabel ? `<div class="list-tip-badge ${s.tip}">${tipLabel}</div>` : ''}
         </div>`;
     }
 
