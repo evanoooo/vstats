@@ -977,7 +977,7 @@ export default function ServerDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { servers, loadingState, isInitialLoad } = useServerManager();
-  const { themeId, isDark } = useTheme();
+  const { isDark } = useTheme();
   const [showContent, setShowContent] = useState(false);
 
   const server = servers.find(s => s.config.id === id);

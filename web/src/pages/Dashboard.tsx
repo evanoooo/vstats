@@ -1326,7 +1326,7 @@ export default function Dashboard() {
                           <VpsCompactCard 
                             server={server} 
                             onClick={() => navigate(`/server/${server.config.id}`)}
-                            isDark={isDark}
+                            themeId={themeClass}
                           />
                         </div>
                       ))}
@@ -1369,7 +1369,7 @@ export default function Dashboard() {
             </div>
           ) : viewMode === 'compact' ? (
             <div className="vps-compact-table">
-              <VpsCompactTableHeader isDark={isDark} />
+              <VpsCompactTableHeader themeId={themeClass} />
               <div className="vps-compact-body">
                 {servers.map((server, index) => (
                   <div 
@@ -1380,7 +1380,7 @@ export default function Dashboard() {
                     <VpsCompactCard 
                       server={server} 
                       onClick={() => navigate(`/server/${server.config.id}`)}
-                      isDark={isDark}
+                      themeId={themeClass}
                     />
                   </div>
                 ))}
