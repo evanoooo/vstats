@@ -1418,7 +1418,8 @@ export default function Dashboard() {
                     )}
                   </div>
                 );
-              })}
+              })
+              )}
               
               {/* Unassigned Servers */}
               {ungroupedServers.length > 0 && (
