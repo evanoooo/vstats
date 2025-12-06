@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 const ConfigFilename = "vstats-agent.json"
@@ -20,6 +21,11 @@ type AgentConfig struct {
 }
 
 func DefaultConfigPath() string {
+	// Check for environment variable override
+	if envPath := os.Getenv("VSTATS_CONFIG_PATH"); envPath != "" {
+		return envPath
+	}
+
 	// Try system-wide locations first
 	if configDir := os.Getenv("PROGRAMDATA"); configDir != "" {
 		path := filepath.Join(configDir, "vstats-agent", ConfigFilename)
@@ -47,7 +53,43 @@ func DefaultConfigPath() string {
 	return ConfigFilename
 }
 
+// LoadConfigFromEnv loads configuration from environment variables
+// Returns nil if required environment variables are not set
+func LoadConfigFromEnv() *AgentConfig {
+	dashboardURL := os.Getenv("VSTATS_DASHBOARD_URL")
+	serverID := os.Getenv("VSTATS_SERVER_ID")
+	agentToken := os.Getenv("VSTATS_AGENT_TOKEN")
+
+	// Required fields
+	if dashboardURL == "" || serverID == "" || agentToken == "" {
+		return nil
+	}
+
+	intervalSecs := uint64(5)
+	if intervalStr := os.Getenv("VSTATS_INTERVAL_SECS"); intervalStr != "" {
+		if parsed, err := strconv.ParseUint(intervalStr, 10, 64); err == nil && parsed > 0 {
+			intervalSecs = parsed
+		}
+	}
+
+	return &AgentConfig{
+		DashboardURL: dashboardURL,
+		ServerID:     serverID,
+		AgentToken:   agentToken,
+		ServerName:   os.Getenv("VSTATS_SERVER_NAME"),
+		Location:     os.Getenv("VSTATS_LOCATION"),
+		Provider:     os.Getenv("VSTATS_PROVIDER"),
+		IntervalSecs: intervalSecs,
+	}
+}
+
 func LoadConfig(path string) (*AgentConfig, error) {
+	// First, try to load from environment variables
+	if envConfig := LoadConfigFromEnv(); envConfig != nil {
+		return envConfig, nil
+	}
+
+	// Fall back to config file
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file %s: %w", path, err)

@@ -1,0 +1,70 @@
+# Multi-stage build for vstats-agent
+
+# Stage 1: Build Go agent
+FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS builder
+
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apk add --no-cache git
+
+# Copy go mod files
+COPY agent-go/go.mod agent-go/go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source files
+COPY agent-go/ ./
+
+# Build the agent binary for target platform
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
+    -ldflags "-s -w" \
+    -trimpath \
+    -a -installsuffix cgo \
+    -o vstats-agent \
+    .
+
+# Stage 2: Final runtime image
+FROM alpine:latest
+
+WORKDIR /app
+
+# Install ca-certificates for HTTPS and tzdata for timezone support
+RUN apk add --no-cache ca-certificates tzdata
+
+# Create non-root user
+RUN addgroup -g 1000 vstats && \
+    adduser -D -u 1000 -G vstats vstats
+
+# Copy built binary from builder
+COPY --from=builder /app/vstats-agent /app/vstats-agent
+
+# Create config directory
+RUN mkdir -p /opt/vstats-agent && \
+    chown -R vstats:vstats /app /opt/vstats-agent
+
+# Environment variables for configuration
+# These can be overridden at runtime
+ENV VSTATS_DASHBOARD_URL=""
+ENV VSTATS_SERVER_ID=""
+ENV VSTATS_AGENT_TOKEN=""
+ENV VSTATS_SERVER_NAME=""
+ENV VSTATS_LOCATION=""
+ENV VSTATS_PROVIDER=""
+ENV VSTATS_INTERVAL_SECS="5"
+ENV VSTATS_CONFIG_PATH="/opt/vstats-agent/config.json"
+
+# Health check - verify the binary works
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD /app/vstats-agent version > /dev/null 2>&1 || exit 1
+
+# Run as vstats user
+USER vstats
+
+# Run the agent
+CMD ["/app/vstats-agent", "run", "--config", "/opt/vstats-agent/config.json"]
+

@@ -1,0 +1,45 @@
+version: '3.8'
+
+# Docker Compose configuration for vStats Agent
+# Use this to deploy the monitoring agent on your servers
+
+services:
+  vstats-agent:
+    image: zsai001/vstats-agent:latest
+    container_name: vstats-agent
+    restart: unless-stopped
+    # Use host network to get accurate network metrics
+    network_mode: host
+    # Use host PID namespace to get accurate process/CPU info
+    pid: host
+    environment:
+      # Required: Dashboard server URL
+      - VSTATS_DASHBOARD_URL=${VSTATS_DASHBOARD_URL:-http://localhost:3001}
+      # Required: Server ID (get from Dashboard after registration)
+      - VSTATS_SERVER_ID=${VSTATS_SERVER_ID}
+      # Required: Agent Token (get from Dashboard after registration)
+      - VSTATS_AGENT_TOKEN=${VSTATS_AGENT_TOKEN}
+      # Optional: Server display name
+      - VSTATS_SERVER_NAME=${VSTATS_SERVER_NAME:-}
+      # Optional: Server location
+      - VSTATS_LOCATION=${VSTATS_LOCATION:-}
+      # Optional: Cloud provider
+      - VSTATS_PROVIDER=${VSTATS_PROVIDER:-Docker}
+      # Optional: Metrics interval in seconds
+      - VSTATS_INTERVAL_SECS=${VSTATS_INTERVAL_SECS:-5}
+    volumes:
+      # Mount host filesystem for disk metrics (read-only)
+      - /:/host:ro
+      # Mount proc for process and CPU metrics
+      - /proc:/host/proc:ro
+      # Mount sys for hardware info
+      - /sys:/host/sys:ro
+      # Optional: Mount config file if using file-based configuration
+      # - /opt/vstats-agent:/opt/vstats-agent:ro
+    healthcheck:
+      test: ["CMD", "/app/vstats-agent", "version"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+

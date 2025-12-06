@@ -302,6 +302,89 @@ jobs:
           platforms: linux/amd64,linux/arm64
 
   # ============================================================================
+  # Build and Push Agent Docker Image (using pre-built artifacts)
+  # ============================================================================
+  build-agent-docker:
+    needs: [build]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Download agent binaries (amd64)
+        uses: actions/download-artifact@v4
+        with:
+          name: vstats-agent-linux-amd64
+          path: docker-context-agent
+
+      - name: Download agent binaries (arm64)
+        uses: actions/download-artifact@v4
+        with:
+          name: vstats-agent-linux-arm64
+          path: docker-context-agent
+
+      - name: Prepare Docker context
+        run: |
+          cd docker-context-agent
+          ls -la
+          chmod +x vstats-agent-linux-amd64 vstats-agent-linux-arm64
+          cp ../Dockerfile.agent.prebuilt ./Dockerfile
+          echo "Docker context prepared:"
+          find . -type f | head -20
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+            VERSION="${VERSION#refs/tags/}"
+          else
+            VERSION="latest"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: zsai001/vstats-agent
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Agent Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: docker-context-agent
+          file: docker-context-agent/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
+
+  # ============================================================================
   # Create GitHub Release
   # ============================================================================
   release:
@@ -406,13 +489,30 @@ jobs:
             .\agent.ps1 -Server "http://YOUR-DASHBOARD:3001" -Token "YOUR-TOKEN"
             ```
 
-            **Docker (Recommended):**
+            **Docker Server (Recommended):**
             ```bash
             docker run -d \
               --name vstats-server \
               -p 3001:3001 \
               -v $(pwd)/data:/app/data \
               zsai001/vstats-server:latest
+            ```
+
+            **Docker Agent:**
+            ```bash
+            docker run -d \
+              --name vstats-agent \
+              --restart unless-stopped \
+              --net host \
+              --pid host \
+              -e VSTATS_DASHBOARD_URL="http://YOUR-DASHBOARD:3001" \
+              -e VSTATS_SERVER_ID="YOUR-SERVER-ID" \
+              -e VSTATS_AGENT_TOKEN="YOUR-TOKEN" \
+              -e VSTATS_SERVER_NAME="$(hostname)" \
+              -v /:/host:ro \
+              -v /proc:/host/proc:ro \
+              -v /sys:/host/sys:ro \
+              zsai001/vstats-agent:latest
             ```
 
             Or using Docker Compose:
