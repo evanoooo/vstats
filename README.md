@@ -12,12 +12,11 @@
 
 <div align="center" style="border: 2px solid #e1e4e8; border-radius: 8px; padding: 16px; margin: 16px 0; background-color: #f6f8fa;">
 
-感谢 
+感谢以下赞助商对本项目的支持！
 
-[TOHU Cloud](https://www.tohu.cloud) 
-[Debee](https://debee.io/) 
+[TOHU Cloud](https://www.tohu.cloud)
 
-对本项目的支持！
+[Debee](https://debee.io/)
 
 </div>
 
