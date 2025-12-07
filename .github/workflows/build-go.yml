@@ -7,6 +7,7 @@ on:
     branches:
       - main
     paths:
+      - 'server-go/**'
       - 'web/**'
       - 'docs-site/**'
       - 'docs/**'
@@ -40,74 +41,88 @@ jobs:
       matrix:
         include:
           # Server builds
-          - project: server-go
+          - cmd: server
             binary: vstats-server
+            version_var: main.ServerVersion
             os: linux
             arch: amd64
             output: vstats-server-linux-amd64
-          - project: server-go
+          - cmd: server
             binary: vstats-server
+            version_var: main.ServerVersion
             os: linux
             arch: arm64
             output: vstats-server-linux-arm64
-          - project: server-go
+          - cmd: server
             binary: vstats-server
+            version_var: main.ServerVersion
             os: darwin
             arch: amd64
             output: vstats-server-darwin-amd64
-          - project: server-go
+          - cmd: server
             binary: vstats-server
+            version_var: main.ServerVersion
             os: darwin
             arch: arm64
             output: vstats-server-darwin-arm64
-          - project: server-go
+          - cmd: server
             binary: vstats-server
+            version_var: main.ServerVersion
             os: windows
             arch: amd64
             output: vstats-server-windows-amd64.exe
-          - project: server-go
+          - cmd: server
             binary: vstats-server
+            version_var: main.ServerVersion
             os: freebsd
             arch: amd64
             output: vstats-server-freebsd-amd64
-          - project: server-go
+          - cmd: server
             binary: vstats-server
+            version_var: main.ServerVersion
             os: freebsd
             arch: arm64
             output: vstats-server-freebsd-arm64
           # Agent builds
-          - project: agent-go
+          - cmd: agent
             binary: vstats-agent
+            version_var: main.AgentVersion
             os: linux
             arch: amd64
             output: vstats-agent-linux-amd64
-          - project: agent-go
+          - cmd: agent
             binary: vstats-agent
+            version_var: main.AgentVersion
             os: linux
             arch: arm64
             output: vstats-agent-linux-arm64
-          - project: agent-go
+          - cmd: agent
             binary: vstats-agent
+            version_var: main.AgentVersion
             os: darwin
             arch: amd64
             output: vstats-agent-darwin-amd64
-          - project: agent-go
+          - cmd: agent
             binary: vstats-agent
+            version_var: main.AgentVersion
             os: darwin
             arch: arm64
             output: vstats-agent-darwin-arm64
-          - project: agent-go
+          - cmd: agent
             binary: vstats-agent
+            version_var: main.AgentVersion
             os: windows
             arch: amd64
             output: vstats-agent-windows-amd64.exe
-          - project: agent-go
+          - cmd: agent
             binary: vstats-agent
+            version_var: main.AgentVersion
             os: freebsd
             arch: amd64
             output: vstats-agent-freebsd-amd64
-          - project: agent-go
+          - cmd: agent
             binary: vstats-agent
+            version_var: main.AgentVersion
             os: freebsd
             arch: arm64
             output: vstats-agent-freebsd-arm64
@@ -122,7 +137,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: ${{ matrix.project }}/go.sum
+          cache-dependency-path: server-go/go.sum
 
       - name: Determine version
         id: version
@@ -138,20 +153,15 @@ jobs:
           echo "tag=v$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
 
-      - name: Build ${{ matrix.project }}
-        working-directory: ${{ matrix.project }}
+      - name: Build ${{ matrix.binary }} (${{ matrix.os }}/${{ matrix.arch }})
+        working-directory: server-go
         run: |
-          if [ "${{ matrix.project }}" == "server-go" ]; then
-            VERSION_VAR="main.ServerVersion"
-          else
-            VERSION_VAR="main.AgentVersion"
-          fi
           GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} CGO_ENABLED=0 go build \
-            -ldflags "-X $VERSION_VAR=${{ steps.version.outputs.version }}" \
+            -ldflags "-X ${{ matrix.version_var }}=${{ steps.version.outputs.version }}" \
             -o ../${{ matrix.output }} \
             -trimpath \
             -a -installsuffix cgo \
-            .
+            ./cmd/${{ matrix.cmd }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
