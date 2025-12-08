@@ -43,6 +43,7 @@ export default {
     darkMode: 'тёмный',
     settings: 'Настройки',
     groupBy: 'Группировка:',
+    groupByTag: 'Группировать по тегу',
     online: 'Онлайн',
     offline: 'Офлайн',
     download: 'Загрузка',
@@ -254,5 +255,4 @@ export default {
     seconds: 'с',
   },
 };
-
 

@@ -43,6 +43,7 @@ export default {
     darkMode: 'escuro',
     settings: 'Configurações',
     groupBy: 'Agrupar por:',
+    groupByTag: 'Agrupar por tag',
     online: 'Online',
     offline: 'Offline',
     download: 'Download',
@@ -254,5 +255,4 @@ export default {
     seconds: 's',
   },
 };
-
 

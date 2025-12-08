@@ -43,6 +43,7 @@ export default {
     darkMode: '다크',
     settings: '설정',
     groupBy: '그룹:',
+    groupByTag: '태그별 그룹화',
     online: '온라인',
     offline: '오프라인',
     download: '다운로드',
@@ -254,5 +255,4 @@ export default {
     seconds: '초',
   },
 };
-
 

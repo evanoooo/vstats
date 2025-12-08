@@ -43,6 +43,7 @@ export default {
     darkMode: 'ダーク',
     settings: '設定',
     groupBy: 'グループ:',
+    groupByTag: 'タグでグループ化',
     online: 'オンライン',
     offline: 'オフライン',
     download: 'ダウンロード',
@@ -254,5 +255,4 @@ export default {
     seconds: '秒',
   },
 };
-
 
