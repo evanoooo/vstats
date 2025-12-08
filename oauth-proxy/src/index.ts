@@ -169,11 +169,31 @@ async function handleGitHubCallback(url: URL, env: Env): Promise<Response> {
     return redirectWithError(proxyState, 'Failed to get user info');
   }
 
+  // Try to get user's primary email if not public
+  let userEmail = userData.email;
+  if (!userEmail) {
+    const emailsResponse = await fetch('https://api.github.com/user/emails', {
+      headers: {
+        'Authorization': `Bearer ${tokenData.access_token}`,
+        'Accept': 'application/json',
+        'User-Agent': 'vStats-OAuth-Proxy',
+      },
+    });
+    const emails = await emailsResponse.json() as Array<{ email: string; primary: boolean; verified: boolean }>;
+    const primaryEmail = emails.find(e => e.primary && e.verified);
+    if (primaryEmail) {
+      userEmail = primaryEmail.email;
+    }
+  }
+
   // Redirect back to the original instance with user info
   const callbackUrl = new URL(stateData.redirect_uri);
   callbackUrl.searchParams.set('state', stateData.original_state);
   callbackUrl.searchParams.set('provider', 'github');
   callbackUrl.searchParams.set('user', userData.login);
+  if (userEmail) {
+    callbackUrl.searchParams.set('email', userEmail);
+  }
 
   return Response.redirect(callbackUrl.toString(), 302);
 }

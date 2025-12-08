@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Cloud, Shield, Zap, Globe, Server, LogOut, Plus, Trash2, Copy, Check, RefreshCw, Terminal } from 'lucide-react';
+import { Cloud, Shield, Zap, Globe, LogOut, Rocket, Send, Server, BarChart3, Bell, Clock, Sparkles } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '../auth/AuthContext';
 import * as api from '../api/cloud';
 
 // GitHub Icon SVG
@@ -21,84 +22,17 @@ const GoogleIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
   </svg>
 );
 
-interface CloudUser {
-  id: string;
-  username: string;
-  email?: string;
-  avatar_url?: string;
-  plan: string;
-  serverCount: number;
-  serverLimit: number;
-}
-
 export default function CloudPage() {
   const { t } = useTranslation();
-  const [user, setUser] = useState<CloudUser | null>(null);
-  const [servers, setServers] = useState<api.Server[]>([]);
+  const { user, logout, isLoading, isUserAdmin } = useAuth();
   const [oauthLoading, setOauthLoading] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // UI State
-  const [showAddServer, setShowAddServer] = useState(false);
-  const [newServerName, setNewServerName] = useState('');
-  const [addingServer, setAddingServer] = useState(false);
-  const [selectedServer, setSelectedServer] = useState<api.Server | null>(null);
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
-
-  // Load user and servers
-  const loadUserData = useCallback(async () => {
-    try {
-      const token = api.getToken();
-      if (!token) {
-        setIsLoading(false);
-        return;
-      }
-
-      // Verify token and get user
-      const userData = await api.getCurrentUser();
-      setUser({
-        id: userData.user.id,
-        username: userData.user.username,
-        email: userData.user.email,
-        avatar_url: userData.user.avatar_url,
-        plan: userData.user.plan,
-        serverCount: userData.server_count,
-        serverLimit: userData.server_limit,
-      });
-
-      // Load servers
-      const serverList = await api.listServers();
-      setServers(serverList);
-    } catch (err) {
-      console.error('Failed to load user data:', err);
-      api.setToken(null);
-      setUser(null);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  // Handle OAuth callback
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get('token');
-    const errorMsg = params.get('error');
-
-    if (errorMsg) {
-      setError(decodeURIComponent(errorMsg));
-      window.history.replaceState({}, '', '/cloud');
-      setIsLoading(false);
-      return;
-    }
-
-    if (token) {
-      api.setToken(token);
-      window.history.replaceState({}, '', '/cloud');
-    }
-
-    loadUserData();
-  }, [loadUserData]);
+  // Admin email state
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailContent, setEmailContent] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const [sendResult, setSendResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // OAuth login
   const handleOAuthLogin = async (provider: 'github' | 'google') => {
@@ -115,323 +49,273 @@ export default function CloudPage() {
   };
 
   // Logout
-  const handleLogout = async () => {
-    try {
-      await api.logout();
-    } catch (err) {
-      // Ignore logout errors
-    }
-    setUser(null);
-    setServers([]);
+  const handleLogout = () => {
+    logout();
   };
 
-  // Add server
-  const handleAddServer = async () => {
-    if (!newServerName.trim()) return;
-    
-    setAddingServer(true);
-    try {
-      const server = await api.createServer(newServerName.trim());
-      setServers([server, ...servers]);
-      setNewServerName('');
-      setShowAddServer(false);
-      setSelectedServer(server);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create server');
-    } finally {
-      setAddingServer(false);
-    }
-  };
+  // Send broadcast email
+  const handleSendEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emailSubject.trim() || !emailContent.trim()) return;
 
-  // Delete server
-  const handleDeleteServer = async (id: string) => {
-    if (!confirm(t('cloud.confirmDelete'))) return;
-    
+    setIsSending(true);
+    setSendResult(null);
+
     try {
-      await api.deleteServer(id);
-      setServers(servers.filter(s => s.id !== id));
-      if (selectedServer?.id === id) {
-        setSelectedServer(null);
+      const response = await fetch('/api/admin/broadcast-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject: emailSubject,
+          content: emailContent,
+          senderEmail: user?.email,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setSendResult({ success: true, message: t('userCenter.emailSentSuccess', { count: data.count }) });
+        setEmailSubject('');
+        setEmailContent('');
+      } else {
+        const errorData = await response.json();
+        setSendResult({ success: false, message: errorData.message || t('userCenter.emailSentError') });
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete server');
+    } catch {
+      setSendResult({ success: false, message: t('userCenter.emailSentError') });
+    } finally {
+      setIsSending(false);
     }
-  };
-
-  // Copy to clipboard
-  const copyToClipboard = async (text: string, key: string) => {
-    await navigator.clipboard.writeText(text);
-    setCopiedKey(key);
-    setTimeout(() => setCopiedKey(null), 2000);
   };
 
   // Loading state
   if (isLoading) {
     return (
-      <div className="pt-20 min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+      <div className="pt-20 min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-50 via-slate-50 to-purple-50 dark:from-slate-900 dark:via-slate-900 dark:to-violet-950">
+        <div className="w-10 h-10 border-3 border-violet-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
-  // Logged in - Dashboard
+  // Logged in - Beautiful Dashboard
   if (user) {
     return (
-      <div className="pt-20 min-h-screen bg-slate-50 dark:bg-slate-900">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Error Alert */}
-          {error && (
+      <div className="min-h-screen bg-gradient-to-br from-violet-50 via-slate-50 to-purple-50 dark:from-slate-900 dark:via-slate-900 dark:to-violet-950">
+        {/* Decorative background elements */}
+        <div className="fixed inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-40 -right-40 w-80 h-80 bg-violet-400/20 dark:bg-violet-500/10 rounded-full blur-3xl" />
+          <div className="absolute top-1/2 -left-40 w-80 h-80 bg-purple-400/20 dark:bg-purple-500/10 rounded-full blur-3xl" />
+          <div className="absolute -bottom-40 right-1/3 w-80 h-80 bg-pink-400/20 dark:bg-pink-500/10 rounded-full blur-3xl" />
+        </div>
+
+        <div className="relative pt-24 pb-16 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-5xl mx-auto">
+            {/* User Profile Card */}
             <motion.div
-              initial={{ opacity: 0, y: -10 }}
+              initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mb-6 p-4 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 flex justify-between items-center"
+              className="relative mb-8"
             >
-              <span>{error}</span>
-              <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700">×</button>
-            </motion.div>
-          )}
+              <div className="absolute inset-0 bg-gradient-to-r from-violet-600 to-purple-600 rounded-3xl blur-xl opacity-20" />
+              <div className="relative bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl rounded-3xl border border-white/50 dark:border-slate-700/50 p-8 shadow-2xl shadow-violet-500/10">
+                <div className="flex flex-col md:flex-row items-center gap-6">
+                  {/* Avatar */}
+                  <div className="relative">
+                    <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-violet-500 via-purple-500 to-pink-500 p-1 shadow-lg shadow-violet-500/30">
+                      <div className="w-full h-full rounded-xl bg-white dark:bg-slate-800 flex items-center justify-center text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-br from-violet-500 to-purple-500">
+                        {user.username.charAt(0).toUpperCase()}
+                      </div>
+                    </div>
+                    {isUserAdmin && (
+                      <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-gradient-to-br from-amber-400 to-orange-500 rounded-lg flex items-center justify-center shadow-lg">
+                        <Shield className="w-4 h-4 text-white" />
+                      </div>
+                    )}
+                  </div>
 
-          {/* User Header */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="glass-card rounded-2xl p-6 mb-6"
-          >
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-xl font-bold shadow-lg shadow-violet-500/30">
-                  {user.avatar_url ? (
-                    <img src={user.avatar_url} alt={user.username} className="w-full h-full rounded-xl object-cover" />
-                  ) : (
-                    user.username.charAt(0).toUpperCase()
-                  )}
-                </div>
-                <div>
-                  <h1 className="text-xl font-bold dark:text-white">{user.username}</h1>
-                  <p className="text-sm text-slate-500">
-                    {t('cloud.serversUsed', { count: user.serverCount, limit: user.serverLimit })}
-                    <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400">
-                      {user.plan}
-                    </span>
-                  </p>
-                </div>
-              </div>
-              <button onClick={handleLogout} className="btn btn-outline flex items-center gap-2">
-                <LogOut className="w-4 h-4" />
-                {t('cloud.logout')}
-              </button>
-            </div>
-          </motion.div>
+                  {/* User Info */}
+                  <div className="flex-1 text-center md:text-left">
+                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-1">
+                      {user.username}
+                    </h1>
+                    <p className="text-slate-500 dark:text-slate-400 flex items-center justify-center md:justify-start gap-2">
+                      <span className="capitalize px-2 py-0.5 bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 rounded-md text-sm">
+                        {user.provider}
+                      </span>
+                      {user.email && <span className="text-sm">{user.email}</span>}
+                    </p>
+                    {isUserAdmin && (
+                      <span className="inline-flex items-center gap-1 mt-2 px-3 py-1 bg-gradient-to-r from-amber-100 to-orange-100 dark:from-amber-900/30 dark:to-orange-900/30 text-amber-700 dark:text-amber-400 rounded-full text-sm font-medium">
+                        <Sparkles className="w-4 h-4" />
+                        {t('userCenter.admin', 'Administrator')}
+                      </span>
+                    )}
+                  </div>
 
-          {/* Servers Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Server List */}
-            <div className="lg:col-span-1">
-              <div className="glass-card rounded-2xl p-4">
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="font-bold dark:text-white">{t('cloud.servers')}</h2>
+                  {/* Logout Button */}
                   <button
-                    onClick={() => setShowAddServer(true)}
-                    disabled={user.serverCount >= user.serverLimit}
-                    className="p-2 rounded-lg bg-violet-500 hover:bg-violet-600 disabled:bg-slate-400 text-white transition-colors"
-                    title={user.serverCount >= user.serverLimit ? t('cloud.limitReached') : t('cloud.addServer')}
+                    onClick={handleLogout}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-400 transition-all duration-200"
                   >
-                    <Plus className="w-4 h-4" />
+                    <LogOut className="w-4 h-4" />
+                    <span className="font-medium">{t('common.logout', 'Logout')}</span>
                   </button>
                 </div>
+              </div>
+            </motion.div>
 
-                {/* Add Server Form */}
-                {showAddServer && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    className="mb-4 p-3 rounded-lg bg-slate-100 dark:bg-slate-800"
-                  >
-                    <input
-                      type="text"
-                      value={newServerName}
-                      onChange={(e) => setNewServerName(e.target.value)}
-                      placeholder={t('cloud.serverName')}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-white mb-2"
-                      onKeyDown={(e) => e.key === 'Enter' && handleAddServer()}
-                      autoFocus
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleAddServer}
-                        disabled={addingServer || !newServerName.trim()}
-                        className="flex-1 py-2 rounded-lg bg-violet-500 hover:bg-violet-600 disabled:bg-slate-400 text-white text-sm transition-colors"
-                      >
-                        {addingServer ? '...' : t('cloud.add')}
-                      </button>
-                      <button
-                        onClick={() => { setShowAddServer(false); setNewServerName(''); }}
-                        className="px-4 py-2 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm"
-                      >
-                        {t('cloud.cancel')}
-                      </button>
+            {/* Coming Soon Hero */}
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="relative mb-8"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-violet-600 to-purple-600 rounded-3xl" />
+              <div className="relative bg-gradient-to-r from-violet-600/90 to-purple-600/90 rounded-3xl p-8 md:p-12 text-white overflow-hidden">
+                {/* Background pattern */}
+                <div className="absolute inset-0 opacity-10">
+                  <div className="absolute top-0 left-0 w-40 h-40 border border-white/20 rounded-full -translate-x-1/2 -translate-y-1/2" />
+                  <div className="absolute top-1/2 right-0 w-60 h-60 border border-white/20 rounded-full translate-x-1/2" />
+                  <div className="absolute bottom-0 left-1/3 w-32 h-32 border border-white/20 rounded-full translate-y-1/2" />
+                </div>
+                
+                <div className="relative flex flex-col md:flex-row items-center gap-8">
+                  <div className="flex-1">
+                    <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/20 backdrop-blur rounded-full text-sm font-medium mb-4">
+                      <Rocket className="w-4 h-4" />
+                      {t('cloud.comingSoon', 'Coming Soon')}
                     </div>
-                  </motion.div>
-                )}
-
-                {/* Server List */}
-                <div className="space-y-2">
-                  {servers.length === 0 ? (
-                    <p className="text-center py-8 text-slate-400">{t('cloud.noServers')}</p>
-                  ) : (
-                    servers.map((server) => (
-                      <div
-                        key={server.id}
-                        onClick={() => setSelectedServer(server)}
-                        className={`p-3 rounded-lg cursor-pointer transition-colors ${
-                          selectedServer?.id === server.id
-                            ? 'bg-violet-100 dark:bg-violet-900/30 border border-violet-300 dark:border-violet-700'
-                            : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-2 h-2 rounded-full ${
-                              server.status === 'online' ? 'bg-green-500' :
-                              server.status === 'warning' ? 'bg-yellow-500' :
-                              server.status === 'error' ? 'bg-red-500' : 'bg-slate-400'
-                            }`} />
-                            <div>
-                              <div className="font-medium dark:text-white text-sm">{server.name}</div>
-                              <div className="text-xs text-slate-500">{server.hostname || server.id.slice(0, 8)}</div>
-                            </div>
-                          </div>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleDeleteServer(server.id); }}
-                            className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500 transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
+                    <h2 className="text-3xl md:text-4xl font-bold mb-4">
+                      {t('userCenter.comingSoonTitle', 'vStats Cloud is Coming Soon')}
+                    </h2>
+                    <p className="text-white/80 text-lg max-w-xl">
+                      {t('userCenter.comingSoonDesc', 'We are working hard to bring you amazing features!')}
+                    </p>
+                  </div>
+                  <div className="shrink-0">
+                    <div className="w-32 h-32 md:w-40 md:h-40 bg-white/10 backdrop-blur rounded-3xl flex items-center justify-center">
+                      <Clock className="w-16 h-16 md:w-20 md:h-20 text-white/80" />
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
+            </motion.div>
 
-            {/* Server Details */}
-            <div className="lg:col-span-2">
-              {selectedServer ? (
+            {/* Feature Cards */}
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8"
+            >
+              {[
+                { icon: Server, title: t('userCenter.feature1Title', 'Multi-Server Management'), desc: t('userCenter.feature1Desc', 'Manage all your servers in one place'), color: 'from-blue-500 to-cyan-500' },
+                { icon: BarChart3, title: t('userCenter.feature2Title', 'Real-time Analytics'), desc: t('userCenter.feature2Desc', 'Monitor performance with live dashboards'), color: 'from-violet-500 to-purple-500' },
+                { icon: Bell, title: t('userCenter.feature3Title', 'Smart Alerts'), desc: t('userCenter.feature3Desc', 'Get notified when something goes wrong'), color: 'from-orange-500 to-pink-500' },
+              ].map((feature, index) => (
                 <motion.div
-                  key={selectedServer.id}
-                  initial={{ opacity: 0, y: 10 }}
+                  key={feature.title}
+                  initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="glass-card rounded-2xl p-6"
+                  transition={{ delay: 0.3 + index * 0.1 }}
+                  className="group relative"
                 >
-                  <div className="flex justify-between items-start mb-6">
-                    <div>
-                      <h2 className="text-xl font-bold dark:text-white">{selectedServer.name}</h2>
-                      <p className="text-sm text-slate-500">
-                        {selectedServer.hostname || 'Not connected'} • {selectedServer.os_type || 'Unknown OS'}
-                      </p>
+                  <div className={`absolute inset-0 bg-gradient-to-r ${feature.color} rounded-2xl blur-xl opacity-0 group-hover:opacity-20 transition-opacity duration-300`} />
+                  <div className="relative h-full bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl rounded-2xl border border-white/50 dark:border-slate-700/50 p-6 hover:shadow-xl transition-all duration-300">
+                    <div className={`w-14 h-14 rounded-xl bg-gradient-to-r ${feature.color} flex items-center justify-center mb-4 shadow-lg`}>
+                      <feature.icon className="w-7 h-7 text-white" />
                     </div>
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      selectedServer.status === 'online' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                      selectedServer.status === 'warning' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
-                      selectedServer.status === 'error' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                      'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
-                    }`}>
-                      {selectedServer.status}
-                    </span>
-                  </div>
-
-                  {/* Metrics (if online) */}
-                  {selectedServer.status === 'online' && selectedServer.metrics && (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-                      <div className="p-4 rounded-xl bg-slate-100 dark:bg-slate-800">
-                        <div className="text-xs text-slate-500 mb-1">CPU</div>
-                        <div className="text-lg font-bold dark:text-white">
-                          {selectedServer.metrics.cpu_usage?.toFixed(1) || '0'}%
-                        </div>
-                      </div>
-                      <div className="p-4 rounded-xl bg-slate-100 dark:bg-slate-800">
-                        <div className="text-xs text-slate-500 mb-1">Memory</div>
-                        <div className="text-lg font-bold dark:text-white">
-                          {selectedServer.metrics.memory_total 
-                            ? ((selectedServer.metrics.memory_used || 0) / selectedServer.metrics.memory_total * 100).toFixed(1)
-                            : '0'}%
-                        </div>
-                      </div>
-                      <div className="p-4 rounded-xl bg-slate-100 dark:bg-slate-800">
-                        <div className="text-xs text-slate-500 mb-1">Disk</div>
-                        <div className="text-lg font-bold dark:text-white">
-                          {selectedServer.metrics.disk_total
-                            ? ((selectedServer.metrics.disk_used || 0) / selectedServer.metrics.disk_total * 100).toFixed(1)
-                            : '0'}%
-                        </div>
-                      </div>
-                      <div className="p-4 rounded-xl bg-slate-100 dark:bg-slate-800">
-                        <div className="text-xs text-slate-500 mb-1">Network</div>
-                        <div className="text-lg font-bold dark:text-white">
-                          {((selectedServer.metrics.network_rx_bytes || 0) / 1024 / 1024).toFixed(1)} MB
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Install Command */}
-                  <div className="p-4 rounded-xl bg-slate-900 dark:bg-slate-950">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2 text-slate-400 text-sm">
-                        <Terminal className="w-4 h-4" />
-                        {t('cloud.installAgent')}
-                      </div>
-                      <button
-                        onClick={() => copyToClipboard(
-                          `curl -fsSL https://vstats.zsoft.cc/agent.sh | sudo bash -s -- --cloud --key "${selectedServer.agent_key}"`,
-                          'install'
-                        )}
-                        className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
-                      >
-                        {copiedKey === 'install' ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-                      </button>
-                    </div>
-                    <code className="block text-sm text-green-400 font-mono overflow-x-auto whitespace-nowrap">
-                      curl -fsSL https://vstats.zsoft.cc/agent.sh | sudo bash -s -- --cloud --key "{selectedServer.agent_key}"
-                    </code>
-                  </div>
-
-                  {/* Agent Key */}
-                  <div className="mt-4 p-3 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-between">
-                    <div>
-                      <div className="text-xs text-slate-500">Agent Key</div>
-                      <code className="text-sm font-mono dark:text-white">{selectedServer.agent_key.slice(0, 16)}...</code>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => copyToClipboard(selectedServer.agent_key, 'key')}
-                        className="p-2 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 transition-colors"
-                        title={t('cloud.copyKey')}
-                      >
-                        {copiedKey === 'key' ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-                      </button>
-                      <button
-                        onClick={async () => {
-                          const { agent_key } = await api.regenerateAgentKey(selectedServer.id);
-                          setSelectedServer({ ...selectedServer, agent_key });
-                          setServers(servers.map(s => s.id === selectedServer.id ? { ...s, agent_key } : s));
-                        }}
-                        className="p-2 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 transition-colors"
-                        title={t('cloud.regenerateKey')}
-                      >
-                        <RefreshCw className="w-4 h-4" />
-                      </button>
-                    </div>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">{feature.title}</h3>
+                    <p className="text-slate-500 dark:text-slate-400 text-sm">{feature.desc}</p>
                   </div>
                 </motion.div>
-              ) : (
-                <div className="glass-card rounded-2xl p-12 text-center">
-                  <Server className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
-                  <p className="text-slate-500">{t('cloud.selectServer')}</p>
+              ))}
+            </motion.div>
+
+            {/* Admin Panel - Broadcast Email */}
+            {isUserAdmin && (
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+                className="relative"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-amber-500 to-orange-500 rounded-3xl blur-xl opacity-10" />
+                <div className="relative bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl rounded-3xl border border-white/50 dark:border-slate-700/50 p-8 shadow-xl">
+                  <div className="flex items-center gap-4 mb-6">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/30">
+                      <Send className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                        {t('userCenter.broadcastEmail', 'Broadcast Email')}
+                      </h2>
+                      <p className="text-slate-500 dark:text-slate-400 text-sm">
+                        {t('userCenter.broadcastEmailDesc', 'Send email to all registered users')}
+                      </p>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleSendEmail} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                        {t('userCenter.emailSubject', 'Subject')}
+                      </label>
+                      <input
+                        type="text"
+                        value={emailSubject}
+                        onChange={(e) => setEmailSubject(e.target.value)}
+                        placeholder={t('userCenter.emailSubjectPlaceholder', 'Enter email subject...')}
+                        className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white/50 dark:bg-slate-900/50 text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all backdrop-blur"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                        {t('userCenter.emailContent', 'Content')}
+                      </label>
+                      <textarea
+                        value={emailContent}
+                        onChange={(e) => setEmailContent(e.target.value)}
+                        placeholder={t('userCenter.emailContentPlaceholder', 'Enter email content...')}
+                        rows={5}
+                        className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white/50 dark:bg-slate-900/50 text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all resize-none backdrop-blur"
+                        required
+                      />
+                    </div>
+
+                    {sendResult && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className={`p-4 rounded-xl ${sendResult.success ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}
+                      >
+                        {sendResult.message}
+                      </motion.div>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={isSending || !emailSubject.trim() || !emailContent.trim()}
+                      className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold rounded-xl hover:from-amber-600 hover:to-orange-600 focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-amber-500/30 hover:shadow-xl hover:shadow-amber-500/40"
+                    >
+                      {isSending ? (
+                        <>
+                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          {t('userCenter.sending', 'Sending...')}
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-5 h-5" />
+                          {t('userCenter.sendEmail', 'Send Broadcast Email')}
+                        </>
+                      )}
+                    </button>
+                  </form>
                 </div>
-              )}
-            </div>
+              </motion.div>
+            )}
           </div>
         </div>
       </div>

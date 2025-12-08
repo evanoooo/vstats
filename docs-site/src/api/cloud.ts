@@ -2,6 +2,9 @@
 // 后端 API 基础 URL
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
+// OAuth Proxy URL (Cloudflare Worker)
+const OAUTH_PROXY_URL = 'https://vstats-oauth-proxy.zsai001.workers.dev';
+
 // 存储 token
 let authToken: string | null = null;
 
@@ -102,8 +105,11 @@ export async function getOAuthProviders(): Promise<OAuthProviders> {
 }
 
 export async function startOAuth(provider: 'github' | 'google'): Promise<{ url: string }> {
-  const redirectUri = encodeURIComponent(window.location.origin + '/cloud');
-  return request(`/auth/oauth/${provider}?redirect_uri=${redirectUri}`);
+  // Use Cloudflare OAuth Proxy directly instead of backend API
+  const redirectUri = encodeURIComponent(window.location.origin + '/auth/callback?from=cloud');
+  const state = encodeURIComponent(Date.now().toString());
+  const url = `${OAUTH_PROXY_URL}/oauth/${provider}?redirect_uri=${redirectUri}&state=${state}`;
+  return { url };
 }
 
 export async function verifyToken(): Promise<{ valid: boolean; user_id: string; username: string; plan: string }> {

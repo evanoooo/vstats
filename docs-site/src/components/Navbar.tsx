@@ -1,31 +1,32 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, Moon, Sun, ChevronDown, Monitor, Terminal, Cloud, Globe } from 'lucide-react';
+import { Menu, Moon, Sun, ChevronDown, Monitor, Terminal, Cloud as CloudIcon, Globe, LogOut } from 'lucide-react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '../auth/AuthContext';
 
 const products = [
-  { 
-    nameKey: 'vStats', 
-    descriptionKey: 'serverMonitoring', 
-    path: '/', 
+  {
+    nameKey: 'vStats',
+    descriptionKey: 'serverMonitoring',
+    path: '/',
     icon: Monitor,
-    color: 'text-sky-500' 
+    color: 'text-sky-500'
   },
-  { 
-    nameKey: 'vStatsCLI', 
-    descriptionKey: 'commandLineTool', 
-    path: '/cli', 
+  {
+    nameKey: 'vStatsCLI',
+    descriptionKey: 'commandLineTool',
+    path: '/cli',
     icon: Terminal,
-    color: 'text-emerald-500' 
+    color: 'text-emerald-500'
   },
-  { 
-    nameKey: 'vStatsCloud', 
-    descriptionKey: 'cloudPlatform', 
-    path: '/cloud', 
-    icon: Cloud,
-    color: 'text-violet-500' 
+  {
+    nameKey: 'vStatsCloud',
+    descriptionKey: 'cloudPlatform',
+    path: '/cloud',
+    icon: CloudIcon,
+    color: 'text-violet-500'
   },
 ];
 
@@ -36,7 +37,9 @@ export default function Navbar() {
   const [isProductMenuOpen, setIsProductMenuOpen] = useState(false);
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
   const location = useLocation();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
   const currentProduct = products.find(p => p.path === location.pathname) || products[0];
   const currentLang = i18n.language;
@@ -94,7 +97,7 @@ export default function Navbar() {
         <div className="flex items-center justify-between h-16">
           {/* Logo & Product Switcher */}
           <div className="relative">
-            <button 
+            <button
               className="flex items-center gap-2 group focus:outline-none"
               onClick={() => setIsProductMenuOpen(!isProductMenuOpen)}
               onBlur={() => setTimeout(() => setIsProductMenuOpen(false), 200)}
@@ -129,8 +132,8 @@ export default function Navbar() {
                         to={product.path}
                         className={clsx(
                           "flex items-center gap-3 p-3 rounded-lg transition-colors",
-                          location.pathname === product.path 
-                            ? "bg-slate-100 dark:bg-slate-700/50" 
+                          location.pathname === product.path
+                            ? "bg-slate-100 dark:bg-slate-700/50"
                             : "hover:bg-slate-50 dark:hover:bg-slate-700/30"
                         )}
                         onClick={() => setIsProductMenuOpen(false)}
@@ -152,8 +155,8 @@ export default function Navbar() {
 
           {/* Desktop Nav */}
           <div className="hidden md:flex items-center gap-8">
-            <a 
-              href="#features" 
+            <a
+              href="#features"
               onClick={handleFeaturesClick}
               className="text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-sky-500 transition-colors"
             >
@@ -161,7 +164,7 @@ export default function Navbar() {
             </a>
             <Link to="/docs" className="text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-sky-500 transition-colors">{t('navbar.documentation')}</Link>
             <a href="https://github.com/zsai001/vstats" target="_blank" rel="noreferrer" className="text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-sky-500 transition-colors">{t('navbar.github')}</a>
-            
+
             <div className="flex items-center gap-3 pl-6 border-l border-slate-200 dark:border-slate-700">
               {/* Language Switcher */}
               <div className="relative">
@@ -217,6 +220,58 @@ export default function Navbar() {
               <a href="https://vps.zsoft.cc" className="btn-primary text-sm px-4 py-2 rounded-lg">
                 {t('navbar.liveDemo')}
               </a>
+
+              {/* User Menu - Only show when logged in */}
+              {user && (
+                <div className="relative pl-4 border-l border-slate-200 dark:border-slate-700">
+                  <button
+                    onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                    onBlur={() => setTimeout(() => setIsUserMenuOpen(false), 200)}
+                    className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white font-medium shadow-sm">
+                      {user.username.charAt(0).toUpperCase()}
+                    </div>
+                  </button>
+
+                  <AnimatePresence>
+                    {isUserMenuOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 10 }}
+                        transition={{ duration: 0.2 }}
+                        className="absolute top-full right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden"
+                      >
+                        <div className="p-3 border-b border-slate-100 dark:border-slate-700/50">
+                          <div className="text-sm font-medium text-slate-900 dark:text-slate-100">{user.username}</div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400 capitalize">{user.provider}</div>
+                        </div>
+                        <div className="p-1">
+                          <Link
+                            to="/cloud"
+                            onClick={() => setIsUserMenuOpen(false)}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg transition-colors"
+                          >
+                            <CloudIcon className="w-4 h-4" />
+                            {t('navbar.products.vStatsCloud', 'vStats Cloud')}
+                          </Link>
+                          <button
+                            onClick={() => {
+                              logout();
+                              setIsUserMenuOpen(false);
+                            }}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg transition-colors"
+                          >
+                            <LogOut className="w-4 h-4" />
+                            {t('common.logout', 'Logout')}
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
             </div>
           </div>
 
@@ -276,6 +331,12 @@ export default function Navbar() {
             <button className="p-2 text-slate-600 dark:text-slate-300">
               <Menu className="w-6 h-6" />
             </button>
+            {/* Mobile User Menu - Only show when logged in */}
+            {user && (
+              <Link to="/cloud" className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white font-medium text-xs">
+                {user.username.charAt(0).toUpperCase()}
+              </Link>
+            )}
           </div>
         </div>
       </div>

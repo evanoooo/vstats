@@ -7,7 +7,11 @@
     "liveDemo": "Live Demo",
     "loading": "Loading...",
     "copy": "Copy",
-    "copied": "Copied"
+    "copied": "Copied",
+    "login": "Login",
+    "logout": "Logout",
+    "userCenter": "User Center",
+    "authenticating": "Authenticating..."
   },
   "navbar": {
     "features": "Features",
@@ -266,5 +270,27 @@
       "license": "License"
     },
     "copyright": "© 2024 vStats Team. All rights reserved."
+  },
+  "userCenter": {
+    "welcome": "Welcome",
+    "admin": "Administrator",
+    "comingSoonTitle": "vStats Cloud is Coming Soon",
+    "comingSoonDesc": "We are working hard to bring you amazing features!",
+    "feature1Title": "Multi-Server Management",
+    "feature1Desc": "Manage all your servers in one place",
+    "feature2Title": "Real-time Analytics",
+    "feature2Desc": "Monitor performance with live dashboards",
+    "feature3Title": "Smart Alerts",
+    "feature3Desc": "Get notified when something goes wrong",
+    "broadcastEmail": "Broadcast Email",
+    "broadcastEmailDesc": "Send email to all registered users",
+    "emailSubject": "Subject",
+    "emailSubjectPlaceholder": "Enter email subject...",
+    "emailContent": "Content",
+    "emailContentPlaceholder": "Enter email content...",
+    "sendEmail": "Send Broadcast Email",
+    "sending": "Sending...",
+    "emailSentSuccess": "Successfully sent to {{count}} users",
+    "emailSentError": "Failed to send email"
   }
 }

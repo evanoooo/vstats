@@ -7,7 +7,11 @@
     "liveDemo": "Live Demo",
     "loading": "加载中...",
     "copy": "复制",
-    "copied": "已复制"
+    "copied": "已复制",
+    "login": "登录",
+    "logout": "退出登录",
+    "userCenter": "用户中心",
+    "authenticating": "认证中..."
   },
   "navbar": {
     "features": "核心特性",
@@ -266,5 +270,27 @@
       "license": "License"
     },
     "copyright": "© 2024 vStats Team. All rights reserved."
+  },
+  "userCenter": {
+    "welcome": "欢迎",
+    "admin": "系统管理员",
+    "comingSoonTitle": "vStats Cloud 即将推出",
+    "comingSoonDesc": "我们正在努力为您带来精彩功能！",
+    "feature1Title": "多服务器管理",
+    "feature1Desc": "在一个地方管理您所有的服务器",
+    "feature2Title": "实时分析",
+    "feature2Desc": "通过实时仪表盘监控性能",
+    "feature3Title": "智能告警",
+    "feature3Desc": "当出现问题时及时获得通知",
+    "broadcastEmail": "群发邮件",
+    "broadcastEmailDesc": "向所有注册用户发送邮件",
+    "emailSubject": "主题",
+    "emailSubjectPlaceholder": "请输入邮件主题...",
+    "emailContent": "内容",
+    "emailContentPlaceholder": "请输入邮件内容...",
+    "sendEmail": "发送群发邮件",
+    "sending": "发送中...",
+    "emailSentSuccess": "成功发送给 {{count}} 位用户",
+    "emailSentError": "发送邮件失败"
   }
 }
