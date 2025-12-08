@@ -30,6 +30,8 @@ usage() {
     echo "  logs      - Show service logs"
     echo "  update    - Pull latest images and restart"
     echo "  setup     - Initial setup (create .env, SSL, etc.)"
+    echo "  diagnose  - Run diagnostic checks for API container"
+    echo "  health    - Run health check for all services"
     echo ""
     exit 1
 }
@@ -135,16 +137,28 @@ update() {
     echo_info "Update completed"
 }
 
+diagnose() {
+    echo_info "Running diagnostic checks..."
+    ./scripts/diagnose.sh
+}
+
+health() {
+    echo_info "Running health checks..."
+    ./scripts/health-check.sh
+}
+
 # 主逻辑
 check_prerequisites
 
 case "${1:-}" in
-    start)   start ;;
-    stop)    stop ;;
-    restart) restart ;;
-    status)  status ;;
-    logs)    logs "$2" ;;
-    update)  update ;;
-    setup)   setup ;;
-    *)       usage ;;
+    start)    start ;;
+    stop)     stop ;;
+    restart)  restart ;;
+    status)   status ;;
+    logs)     logs "$2" ;;
+    update)   update ;;
+    setup)    setup ;;
+    diagnose) diagnose ;;
+    health)   health ;;
+    *)        usage ;;
 esac

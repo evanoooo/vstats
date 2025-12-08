@@ -8,6 +8,7 @@ set -e
 # Configuration
 POSTGRES_CONTAINER="vstats-postgres"
 REDIS_CONTAINER="vstats-redis"
+API_CONTAINER="vstats-api"
 
 # Load environment variables
 if [ -f ".env" ]; then
@@ -77,6 +78,58 @@ if docker ps --format '{{.Names}}' | grep -q "^${REDIS_CONTAINER}$"; then
         echo -e "  Keys: ${KEYS:-0}"
     else
         echo -e "  Connection: ${RED}Failed${NC}"
+        STATUS=1
+    fi
+else
+    echo -e "  Container: ${RED}Not Running${NC}"
+    STATUS=1
+fi
+
+# ==========================================
+# Check API Server
+# ==========================================
+echo -e "\n${YELLOW}[API Server]${NC}"
+
+if docker ps --format '{{.Names}}' | grep -q "^${API_CONTAINER}$"; then
+    echo -e "  Container: ${GREEN}Running${NC}"
+    
+    # Check container health status
+    HEALTH=$(docker inspect --format='{{.State.Health.Status}}' ${API_CONTAINER} 2>/dev/null || echo "unknown")
+    if [ "$HEALTH" = "healthy" ]; then
+        echo -e "  Health: ${GREEN}Healthy${NC}"
+    elif [ "$HEALTH" = "unhealthy" ]; then
+        echo -e "  Health: ${RED}Unhealthy${NC}"
+        STATUS=1
+    else
+        echo -e "  Health: ${YELLOW}${HEALTH}${NC}"
+    fi
+    
+    # Check if API is responding
+    if docker exec ${API_CONTAINER} wget -q -O- http://localhost:3001/health > /dev/null 2>&1; then
+        echo -e "  Endpoint: ${GREEN}OK${NC}"
+        
+        # Get detailed health
+        DETAILED=$(docker exec ${API_CONTAINER} wget -q -O- http://localhost:3001/health/detailed 2>/dev/null || echo "")
+        if [ -n "$DETAILED" ]; then
+            DB_STATUS=$(echo "$DETAILED" | grep -o '"database":{[^}]*}' | grep -o '"status":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
+            REDIS_STATUS=$(echo "$DETAILED" | grep -o '"redis":{[^}]*}' | grep -o '"status":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
+            
+            if [ "$DB_STATUS" = "up" ]; then
+                echo -e "  Database Connection: ${GREEN}OK${NC}"
+            else
+                echo -e "  Database Connection: ${RED}Failed${NC}"
+                STATUS=1
+            fi
+            
+            if [ "$REDIS_STATUS" = "up" ]; then
+                echo -e "  Redis Connection: ${GREEN}OK${NC}"
+            else
+                echo -e "  Redis Connection: ${RED}Failed${NC}"
+                STATUS=1
+            fi
+        fi
+    else
+        echo -e "  Endpoint: ${RED}Not Responding${NC}"
         STATUS=1
     fi
 else

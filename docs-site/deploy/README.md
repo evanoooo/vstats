@@ -343,6 +343,54 @@ docker compose down -v
 docker compose up -d
 ```
 
+### API 容器显示 unhealthy
+
+**快速诊断：**
+
+```bash
+# 使用诊断脚本（推荐）
+./scripts/deploy.sh diagnose
+
+# 或使用健康检查脚本
+./scripts/deploy.sh health
+```
+
+**手动诊断步骤：**
+
+```bash
+# 1. 查看 API 容器日志
+docker compose logs api
+
+# 2. 检查容器是否正在运行
+docker compose ps api
+
+# 3. 手动测试健康检查端点
+docker exec vstats-api wget -q -O- http://localhost:3001/health
+
+# 4. 查看详细健康状态
+docker exec vstats-api wget -q -O- http://localhost:3001/health/detailed
+
+# 5. 检查环境变量配置
+docker exec vstats-api env | grep -E "DATABASE_URL|REDIS_URL|PORT"
+
+# 6. 测试数据库连接
+docker exec vstats-postgres psql -U vstats -d vstats_cloud -c "SELECT 1;"
+
+# 7. 测试 Redis 连接
+docker exec vstats-redis redis-cli -a your_redis_password ping
+
+# 8. 如果应用启动失败，检查 .env 文件中的配置
+cat .env | grep -E "POSTGRES_|REDIS_|JWT_|SESSION_"
+```
+
+**常见问题：**
+
+1. **数据库连接失败**：检查 `DATABASE_URL` 中的用户名、密码和数据库名是否正确
+2. **Redis 连接失败**：检查 `REDIS_URL` 中的密码是否正确
+3. **应用启动超时**：增加 `start_period` 时间（已在配置中设置为 90 秒）
+4. **健康检查失败**：确保容器内 `wget` 命令可用，或检查应用是否正常监听 3001 端口
+5. **环境变量不匹配**：确保 `.env` 文件中的密码与 docker-compose.yml 中的默认值匹配，或更新 docker-compose.yml 使用 `.env` 中的值
+
 ## 联系支持
 
 如有问题，请通过以下方式联系：
