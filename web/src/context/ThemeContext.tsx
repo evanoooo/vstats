@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { sanitizeUrl } from '../utils/security';
 
 // 主题类型定义
 export type ThemeId = 
@@ -360,9 +361,10 @@ const serverToLocalBackground = (serverBg: ServerThemeSettings['background']): B
   if (!serverBg) return DEFAULT_BACKGROUND;
   const validTypes: BackgroundType[] = ['gradient', 'bing', 'unsplash', 'custom', 'solid'];
   const bgType = validTypes.includes(serverBg.type as BackgroundType) ? serverBg.type : 'gradient';
+  const safeCustomUrl = sanitizeUrl(serverBg.custom_url) || undefined;
   return {
     type: bgType,
-    customUrl: serverBg.custom_url,
+    customUrl: safeCustomUrl,
     unsplashQuery: serverBg.unsplash_query,
     solidColor: serverBg.solid_color,
     blur: serverBg.blur ?? 0,
@@ -372,9 +374,10 @@ const serverToLocalBackground = (serverBg: ServerThemeSettings['background']): B
 
 // Convert local format to server format
 const localToServerBackground = (localBg: BackgroundConfig): ServerThemeSettings['background'] => {
+  const safeCustomUrl = sanitizeUrl(localBg.customUrl);
   return {
     type: localBg.type as BackgroundType,
-    custom_url: localBg.customUrl,
+    custom_url: safeCustomUrl || undefined,
     unsplash_query: localBg.unsplashQuery,
     solid_color: localBg.solidColor,
     blur: localBg.blur,

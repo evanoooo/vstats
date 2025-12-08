@@ -7,6 +7,7 @@ import { getProviderLogo, getDistributionLogo, LogoImage } from '../utils/logoUt
 import { useTheme } from '../context/ThemeContext';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import type { SocialLink, GroupOption } from '../types';
+import { sanitizeSocialLinks } from '../utils/security';
 
 type ViewMode = 'list' | 'grid' | 'compact';
 
@@ -79,11 +80,12 @@ function SocialIcon({ platform }: { platform: string }) {
 }
 
 function SocialLinks({ links, className = '', isDark }: { links: SocialLink[]; className?: string; isDark: boolean }) {
-  if (!links || links.length === 0) return null;
+  const safeLinks = sanitizeSocialLinks(links);
+  if (safeLinks.length === 0) return null;
   
   return (
     <div className={`flex items-center gap-2 ${className}`}>
-      {links.map((link, i) => (
+      {safeLinks.map((link, i) => (
         <a
           key={i}
           href={link.url}

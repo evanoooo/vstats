@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import type { SystemMetrics, SiteSettings, ServerGroup, GroupDimension } from '../types';
+import { sanitizeSiteSettings } from '../utils/security';
 
 interface NetworkSpeed {
   rx_sec: number;
@@ -206,7 +207,7 @@ export function useServerManager() {
               
               // Update site settings if provided
               if (fullData.site_settings) {
-                setSiteSettings(fullData.site_settings);
+                setSiteSettings(sanitizeSiteSettings(fullData.site_settings));
               }
               
               // Update groups if provided (deprecated)
@@ -311,10 +312,11 @@ export function useServerManager() {
             }
             // Handle site settings update message
             else if (data.type === 'site_settings' && data.site_settings) {
-              setSiteSettings(data.site_settings);
+              const sanitized = sanitizeSiteSettings(data.site_settings);
+              setSiteSettings(sanitized);
               // Dispatch custom event for ThemeContext to pick up
               window.dispatchEvent(new CustomEvent('vstats-site-settings', { 
-                detail: data.site_settings 
+                detail: sanitized 
               }));
             }
             // Handle delta update message

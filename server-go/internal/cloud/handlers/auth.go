@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"vstats/internal/cloud/auth"
@@ -53,7 +55,7 @@ func GitHubOAuthStart(c *gin.Context) {
 	ctx := context.Background()
 	stateData := &redis.OAuthStateData{
 		Provider:    "github",
-		RedirectURL: c.Query("redirect_uri"),
+		RedirectURL: sanitizeRedirectURL(c.Query("redirect_uri")),
 		CreatedAt:   time.Now().Unix(),
 	}
 	if err := redis.SetOAuthState(ctx, state, stateData); err != nil {
@@ -145,7 +147,7 @@ func GoogleOAuthStart(c *gin.Context) {
 	ctx := context.Background()
 	stateData := &redis.OAuthStateData{
 		Provider:    "google",
-		RedirectURL: c.Query("redirect_uri"),
+		RedirectURL: sanitizeRedirectURL(c.Query("redirect_uri")),
 		CreatedAt:   time.Now().Unix(),
 	}
 	if err := redis.SetOAuthState(ctx, state, stateData); err != nil {
@@ -281,16 +283,55 @@ func getOAuthCallbackURL(c *gin.Context, provider string) string {
 
 func redirectWithToken(c *gin.Context, token string, expiresAt time.Time, provider, username, customRedirect string) {
 	redirectURL := "/oauth-callback"
-	if customRedirect != "" {
-		redirectURL = customRedirect
+	if safeRedirect := sanitizeRedirectURL(customRedirect); safeRedirect != "" {
+		redirectURL = safeRedirect
 	}
 
-	redirectURL = fmt.Sprintf("%s?token=%s&expires=%d&provider=%s&user=%s",
-		redirectURL, token, expiresAt.Unix(), provider, username)
+	params := url.Values{}
+	params.Set("token", token)
+	params.Set("expires", fmt.Sprintf("%d", expiresAt.Unix()))
+	params.Set("provider", provider)
+	params.Set("user", username)
 
-	c.Redirect(http.StatusTemporaryRedirect, redirectURL)
+	separator := "?"
+	if strings.Contains(redirectURL, "?") {
+		separator = "&"
+	}
+
+	c.Redirect(http.StatusTemporaryRedirect, redirectURL+separator+params.Encode())
 }
 
 func redirectWithError(c *gin.Context, message string) {
-	c.Redirect(http.StatusTemporaryRedirect, "/oauth-callback?error="+message)
+	params := url.Values{}
+	params.Set("error", message)
+	c.Redirect(http.StatusTemporaryRedirect, "/oauth-callback?"+params.Encode())
+}
+
+func sanitizeRedirectURL(raw string) string {
+	if raw == "" {
+		return ""
+	}
+
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+
+	if parsed.IsAbs() {
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+			return ""
+		}
+		return parsed.String()
+	}
+
+	// Disallow protocol-relative redirects and other unsafe patterns
+	if strings.HasPrefix(raw, "//") {
+		return ""
+	}
+
+	if strings.HasPrefix(raw, "/") {
+		return raw
+	}
+
+	return ""
 }

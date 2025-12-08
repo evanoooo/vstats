@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme, type ThemeId, type BackgroundType } from '../context/ThemeContext';
 import { showToast } from '../components/Toast';
 import type { SiteSettings, SocialLink, GroupDimension } from '../types';
+import { sanitizeSiteSettings } from '../utils/security';
 
 // Universal copy to clipboard function that works in all contexts
 const copyTextToClipboard = async (text: string): Promise<boolean> => {
@@ -847,7 +848,7 @@ export default function Settings() {
       const res = await fetch('/api/settings/site');
       if (res.ok) {
         const data = await res.json();
-        setSiteSettings(data);
+        setSiteSettings(sanitizeSiteSettings(data));
       }
     } catch (e) {
       console.error('Failed to fetch site settings', e);
@@ -1425,6 +1426,8 @@ export default function Settings() {
   const saveSiteSettings = async () => {
     setSiteSettingsSaving(true);
     setSiteSettingsSuccess(false);
+
+    const sanitizedSettings = sanitizeSiteSettings(siteSettings);
     
     try {
       const res = await fetch('/api/settings/site', {
@@ -1433,10 +1436,11 @@ export default function Settings() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(siteSettings)
+        body: JSON.stringify(sanitizedSettings)
       });
       
       if (res.ok) {
+        setSiteSettings(sanitizedSettings);
         setSiteSettingsSuccess(true);
         setTimeout(() => setSiteSettingsSuccess(false), 3000);
       }
