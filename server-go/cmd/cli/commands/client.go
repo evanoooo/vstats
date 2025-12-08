@@ -280,3 +280,25 @@ func (c *Client) GetServerHistory(id string, rangeStr string) (*MetricsHistory, 
 	}
 	return &resp, nil
 }
+
+// Helper methods for cleaner API calls
+
+// get performs a GET request
+func (c *Client) get(path string, result interface{}) error {
+	return c.Do("GET", "/api"+path, nil, result)
+}
+
+// post performs a POST request
+func (c *Client) post(path string, body interface{}, result interface{}) error {
+	return c.Do("POST", "/api"+path, body, result)
+}
+
+// put performs a PUT request
+func (c *Client) put(path string, body interface{}, result interface{}) error {
+	return c.Do("PUT", "/api"+path, body, result)
+}
+
+// delete performs a DELETE request
+func (c *Client) delete(path string) error {
+	return c.Do("DELETE", "/api"+path, nil, nil)
+}

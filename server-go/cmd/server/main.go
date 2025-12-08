@@ -35,9 +35,15 @@ func main() {
 			fmt.Println("╠════════════════════════════════════════════════════════════════╣")
 			fmt.Printf("║  New admin password: %-40s ║\n", password)
 			fmt.Printf("║  Config file: %-47s ║\n", GetConfigPath())
-			fmt.Println("╠════════════════════════════════════════════════════════════════╣")
-			fmt.Println("║  ⚠️  If server is running, restart it to use new password     ║")
 			fmt.Println("╚════════════════════════════════════════════════════════════════╝")
+
+			// Try to signal running server to reload config
+			if err := findAndSignalServer(); err != nil {
+				fmt.Printf("\n⚠️  %v\n", err)
+				fmt.Println("   If server is running, please restart it manually.")
+			} else {
+				fmt.Println("\n✅ Server has been notified to reload the new password.")
+			}
 			return
 		}
 	}
@@ -88,6 +94,9 @@ func main() {
 		localCollector.SetPingTargets(config.ProbeSettings.PingTargets)
 		fmt.Printf("📡 Ping targets configured: %d targets\n", len(config.ProbeSettings.PingTargets))
 	}
+
+	// Setup signal handler for config reload (SIGHUP)
+	SetupSignalHandler(state)
 
 	// Start background tasks
 	go metricsBroadcastLoop(state)

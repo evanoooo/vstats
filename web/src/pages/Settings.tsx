@@ -1799,9 +1799,10 @@ export default function Settings() {
   }
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex justify-center p-4 md:p-6 lg:p-10">
+      <div className="w-full max-w-7xl flex gap-6">
       {/* Fixed Sidebar */}
-      <aside className="settings-sidebar hidden lg:flex flex-col w-72 border-r border-white/10 bg-black/20 backdrop-blur-sm">
+      <aside className="settings-sidebar hidden lg:flex flex-col w-72 shrink-0 nezha-card self-start sticky top-10">
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center gap-3 mb-4">
             <button
@@ -1935,8 +1936,8 @@ export default function Settings() {
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="p-4 md:p-6 lg:p-10 max-w-4xl mx-auto">
+      <div className="flex-1 min-w-0">
+        <div className="">
           {/* Mobile Header */}
           <div className="lg:hidden flex items-center justify-between mb-8">
             <div className="flex items-center gap-4">
@@ -2631,8 +2632,8 @@ export default function Settings() {
       </div>
       )}
 
-      {/* Quick Install Section - Part of Group Dimensions */}
-      {activeSection === 'group-dimensions' && (
+      {/* Quick Install Section - Part of Server Management */}
+      {activeSection === 'server-management' && (
       <div className="nezha-card p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
@@ -3438,7 +3439,8 @@ export default function Settings() {
       </div>
       )}
 
-      {/* Version Info Section */}
+      {/* Version Info Section - Only in Site Settings */}
+      {activeSection === 'site-settings' && (
       <div className="nezha-card p-6 mb-6">
         <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-4">
           <span className="w-2 h-2 rounded-full bg-cyan-500"></span>
@@ -3500,6 +3502,7 @@ export default function Settings() {
           )}
         </div>
       </div>
+      )}
 
       {/* Security Section */}
       {activeSection === 'security' && (
@@ -3543,6 +3546,7 @@ export default function Settings() {
       </div>
       )}
         </div>
+      </div>
       </div>
     </div>
   );

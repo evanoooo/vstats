@@ -9,7 +9,6 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SERVER_DIR="$PROJECT_ROOT/server-go"
-AGENT_DIR="$PROJECT_ROOT/agent-go"
 WEB_DIR="$PROJECT_ROOT/web"
 
 # Colors
@@ -42,14 +41,14 @@ echo ""
 
 # Build backend
 echo -e "${YELLOW}[2/4]${NC} Building backend..."
-cd "$SERVER_DIR"
+cd "$SERVER_DIR/cmd/server"
 go build -o "$PROJECT_ROOT/vstats-server-dev" .
 echo -e "${GREEN}✓ Backend built${NC}"
 echo ""
 
 # Build agent (optional, for testing)
 echo -e "${YELLOW}[3/4]${NC} Building agent..."
-cd "$AGENT_DIR"
+cd "$SERVER_DIR/cmd/agent"
 go build -o "$PROJECT_ROOT/vstats-agent-dev" .
 echo -e "${GREEN}✓ Agent built${NC}"
 echo ""
@@ -80,10 +79,18 @@ echo ""
 # Reset password to get a fresh one for development
 echo -e "${YELLOW}[4/4]${NC} Resetting admin password..."
 PASSWORD_OUTPUT=$("$SERVER_BINARY" --reset-password 2>&1)
-# Extract password from output (format: "New admin password: {password}")
-ADMIN_PASSWORD=$(echo "$PASSWORD_OUTPUT" | grep "New admin password:" | sed -E 's/.*New admin password: +([^ ]+).*/\1/' | tr -d ' ')
+# Extract password from output (format: "║  New admin password: {password}     ║")
+# The password is a 16-char alphanumeric string
+ADMIN_PASSWORD=$(echo "$PASSWORD_OUTPUT" | grep "New admin password:" | sed -E 's/.*New admin password:[[:space:]]+([A-Za-z0-9]+)[[:space:]]*.*$/\1/')
 if [ -z "$ADMIN_PASSWORD" ]; then
-    ADMIN_PASSWORD="admin"
+    # Fallback: try to match any word after "password:"
+    ADMIN_PASSWORD=$(echo "$PASSWORD_OUTPUT" | grep -oE 'password:[[:space:]]+[A-Za-z0-9]+' | tail -1 | sed -E 's/password:[[:space:]]+//')
+fi
+if [ -z "$ADMIN_PASSWORD" ]; then
+    echo -e "${RED}Warning: Could not extract password from output${NC}"
+    echo "Output was:"
+    echo "$PASSWORD_OUTPUT"
+    ADMIN_PASSWORD="(check output above)"
 fi
 echo -e "${GREEN}✓ Password reset${NC}"
 echo ""

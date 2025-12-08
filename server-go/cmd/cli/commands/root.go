@@ -24,14 +24,16 @@ It allows you to:
   - Login and authenticate with vStats Cloud
   - List, create, and manage servers
   - View real-time metrics and history
-  - Generate agent installation commands
+  - Deploy agents and web dashboards remotely via SSH
   - Export data in various formats (table, json, yaml)
 
 Examples:
-  vstats login                    # Login to vStats Cloud
-  vstats server list              # List all servers
-  vstats server create web-01     # Create a new server
-  vstats server metrics web-01    # View server metrics`,
+  vstats login                     # Login to vStats Cloud
+  vstats server list               # List all servers
+  vstats server create web-01      # Create a new server
+  vstats server metrics web-01     # View server metrics
+  vstats ssh agent root@server     # Deploy agent via SSH
+  vstats ssh web root@server       # Deploy web dashboard via SSH`,
 	SilenceUsage: true,
 }
 
@@ -61,6 +63,8 @@ func init() {
 	rootCmd.AddCommand(serverCmd)
 	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(whoamiCmd)
+	rootCmd.AddCommand(sshCmd)
+	rootCmd.AddCommand(webCmd)
 }
 
 func initConfig() {
