@@ -24,7 +24,9 @@ NC='\033[0m'
 INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/vstats-agent"
 SERVICE_NAME="vstats-agent"
-VSTATS_API="https://vstats.zsoft.cc"
+# Allow VSTATS_API to be overridden via environment variable
+# Example: VSTATS_API="http://your-cloud-server:8080" curl -fsSL ... | bash
+VSTATS_API="${VSTATS_API:-https://vstats.zsoft.cc}"
 VSTATS_DOWNLOAD="${VSTATS_API}/download"
 # Fallback to GitHub
 GITHUB_REPO="zsai001/vstats"
@@ -140,29 +142,29 @@ detect_system() {
     info "Detected: $OS-$ARCH"
 }
 
-# Get latest version (try vstats.zsoft.cc first, then GitHub)
+# Get latest version (try cloud API first, then GitHub)
 get_latest_version() {
     info "Fetching latest version..."
     
-    # Try vstats.zsoft.cc first (faster, cached)
+    # Try cloud API first (faster, cached)
     if command -v curl &> /dev/null; then
-        LATEST_VERSION=$(curl -fsSL "${VSTATS_API}/api/release/version" 2>/dev/null)
+        LATEST_VERSION=$(curl -fsSL "${VSTATS_API}/api/release/version" 2>/dev/null | tr -d '[:space:]')
     elif command -v wget &> /dev/null; then
-        LATEST_VERSION=$(wget -qO- "${VSTATS_API}/api/release/version" 2>/dev/null)
+        LATEST_VERSION=$(wget -qO- "${VSTATS_API}/api/release/version" 2>/dev/null | tr -d '[:space:]')
     fi
     
-    # Fallback to GitHub if vstats.zsoft.cc failed
-    if [ -z "$LATEST_VERSION" ]; then
-        warn "Falling back to GitHub API..."
+    # Fallback to GitHub if cloud API failed
+    if [ -z "$LATEST_VERSION" ] || [ "$LATEST_VERSION" = "" ]; then
+        warn "Cloud API unavailable, falling back to GitHub API..."
         if command -v curl &> /dev/null; then
-            LATEST_VERSION=$(curl -fsSL "$GITHUB_API" 2>/dev/null | grep '"tag_name"' | head -1 | cut -d'"' -f4)
+            LATEST_VERSION=$(curl -fsSL "$GITHUB_API" 2>/dev/null | grep '"tag_name"' | head -1 | cut -d'"' -f4 | tr -d '[:space:]')
         elif command -v wget &> /dev/null; then
-            LATEST_VERSION=$(wget -qO- "$GITHUB_API" 2>/dev/null | grep '"tag_name"' | head -1 | cut -d'"' -f4)
+            LATEST_VERSION=$(wget -qO- "$GITHUB_API" 2>/dev/null | grep '"tag_name"' | head -1 | cut -d'"' -f4 | tr -d '[:space:]')
         fi
         USE_GITHUB_DOWNLOAD=true
     fi
     
-    if [ -z "$LATEST_VERSION" ]; then
+    if [ -z "$LATEST_VERSION" ] || [ "$LATEST_VERSION" = "" ]; then
         error "Could not fetch latest version. Please check your network connection."
     fi
     

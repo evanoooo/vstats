@@ -45,8 +45,15 @@ param(
 )
 
 # Configuration
+# Allow VSTATS_API to be overridden via environment variable (optional for CLI)
+if (-not $env:VSTATS_API) {
+    $env:VSTATS_API = "https://vstats.zsoft.cc"
+}
+$VSTATS_API = $env:VSTATS_API
+$VSTATS_DOWNLOAD = "$VSTATS_API/download"
 $GITHUB_REPO = "zsai001/vstats"
 $GITHUB_API = "https://api.github.com/repos/$GITHUB_REPO/releases/latest"
+$GITHUB_DOWNLOAD = "https://github.com/$GITHUB_REPO/releases/download"
 $DEFAULT_INSTALL_DIR = "$env:LOCALAPPDATA\vstats"
 
 # Colors and output helpers

@@ -1250,7 +1250,7 @@ export default function ServerDetail() {
             {t('serverDetail.storageSection')}
           </h2>
           <div className="space-y-5">
-            {metrics.disks.map((disk, i) => (
+            {(metrics.disks || []).map((disk, i) => (
               <div key={i}>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">

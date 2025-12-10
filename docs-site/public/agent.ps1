@@ -132,8 +132,17 @@ if (-not $isWebInstall) {
 $INSTALL_DIR = "$env:ProgramData\vstats-agent"
 $CONFIG_FILE = "$INSTALL_DIR\vstats-agent.json"
 $SERVICE_NAME = "vstats-agent"
+# Allow VSTATS_API to be overridden via environment variable
+# Example: $env:VSTATS_API="http://your-cloud-server:8080"; . {irm ...}; Install-VStatsAgent ...
+if (-not $env:VSTATS_API) {
+    $env:VSTATS_API = "https://vstats.zsoft.cc"
+}
+$VSTATS_API = $env:VSTATS_API
+$VSTATS_DOWNLOAD = "$VSTATS_API/download"
+# Fallback to GitHub
 $GITHUB_REPO = "zsai001/vstats"
 $GITHUB_API = "https://api.github.com/repos/$GITHUB_REPO/releases/latest"
+$GITHUB_DOWNLOAD = "https://github.com/$GITHUB_REPO/releases/download"
 
 # Colors
 function Write-ColorOutput($ForegroundColor) {
@@ -194,8 +203,8 @@ Web Install (PowerShell):
 function Get-Architecture {
     $arch = [System.Environment]::GetEnvironmentVariable("PROCESSOR_ARCHITECTURE")
     switch ($arch) {
-        "AMD64" { return "x86_64" }
-        "ARM64" { return "aarch64" }
+        "AMD64" { return "amd64" }  # Windows uses amd64, not x86_64
+        "ARM64" { return "arm64" }   # Windows uses arm64, not aarch64
         default { Error "Unsupported architecture: $arch" }
     }
 }
@@ -203,15 +212,38 @@ function Get-Architecture {
 function Get-LatestVersion {
     Info "Fetching latest version..."
     
+    # Try cloud API first
+    $useGitHub = $false
     try {
-        $release = Invoke-RestMethod -Uri $GITHUB_API -ErrorAction Stop
-        $version = $release.tag_name
-        Success "Latest version: $version"
-        return $version
+        $versionUrl = "$VSTATS_API/api/release/version"
+        $version = (Invoke-RestMethod -Uri $versionUrl -ErrorAction Stop).Trim()
+        if ($version -and $version -match '^v?\d+\.\d+\.\d+') {
+            # Ensure version starts with 'v'
+            if (-not $version.StartsWith('v')) {
+                $version = "v$version"
+            }
+            Success "Latest version: $version (from cloud API)"
+            return $version
+        }
     } catch {
-        Warn "Could not fetch latest version, using v1.3.0"
-        return "v1.3.0"
+        Warn "Cloud API unavailable, falling back to GitHub..."
+        $useGitHub = $true
     }
+    
+    # Fallback to GitHub
+    if ($useGitHub) {
+        try {
+            $release = Invoke-RestMethod -Uri $GITHUB_API -ErrorAction Stop
+            $version = $release.tag_name
+            Success "Latest version: $version (from GitHub)"
+            return $version
+        } catch {
+            Warn "Could not fetch latest version, using v1.3.0"
+            return "v1.3.0"
+        }
+    }
+    
+    return "v1.3.0"
 }
 
 function Install-Binary {
@@ -219,10 +251,13 @@ function Install-Binary {
     
     $arch = Get-Architecture
     $binaryName = "vstats-agent-windows-$arch.exe"
-    $downloadUrl = "https://github.com/$GITHUB_REPO/releases/download/$Version/$binaryName"
+    
+    # Try cloud API first
+    $downloadUrl = "$VSTATS_DOWNLOAD/latest/$binaryName"
+    $useGitHub = $false
     
     Info "Downloading vstats-agent $Version..."
-    Info "URL: $downloadUrl"
+    Info "Trying cloud API: $downloadUrl"
     
     # Create install directory
     if (-not (Test-Path $INSTALL_DIR)) {
@@ -237,9 +272,39 @@ function Install-Binary {
         Invoke-WebRequest -Uri $downloadUrl -OutFile $targetPath -ErrorAction Stop
         $ProgressPreference = 'Continue'
         
-        Success "Binary installed to $targetPath"
+        # Verify file is not empty
+        if ((Get-Item $targetPath).Length -gt 0) {
+            Success "Binary installed to $targetPath (from cloud API)"
+            return
+        } else {
+            Remove-Item $targetPath -Force
+            throw "Downloaded file is empty"
+        }
     } catch {
-        Error "Failed to download binary. Check https://github.com/$GITHUB_REPO/releases"
+        Warn "Cloud API download failed, falling back to GitHub..."
+        $useGitHub = $true
+    }
+    
+    # Fallback to GitHub
+    if ($useGitHub) {
+        $downloadUrl = "$GITHUB_DOWNLOAD/$Version/$binaryName"
+        Info "Trying GitHub: $downloadUrl"
+        
+        try {
+            $ProgressPreference = 'SilentlyContinue'
+            Invoke-WebRequest -Uri $downloadUrl -OutFile $targetPath -ErrorAction Stop
+            $ProgressPreference = 'Continue'
+            
+            if ((Get-Item $targetPath).Length -gt 0) {
+                Success "Binary installed to $targetPath (from GitHub)"
+                return
+            } else {
+                Remove-Item $targetPath -Force
+                throw "Downloaded file is empty"
+            }
+        } catch {
+            Error "Failed to download binary. Check https://github.com/$GITHUB_REPO/releases"
+        }
     }
 }
 

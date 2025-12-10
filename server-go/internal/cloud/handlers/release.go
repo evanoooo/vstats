@@ -201,6 +201,25 @@ func DownloadBinaryVersion(c *gin.Context) {
 		return
 	}
 
+	// Validate binary name format (same as DownloadBinary)
+	validPrefixes := []string{
+		"vstats-server-",
+		"vstats-agent-",
+		"vstats-cli-",
+		"web-dist",
+	}
+	isValid := false
+	for _, prefix := range validPrefixes {
+		if strings.HasPrefix(binaryName, prefix) {
+			isValid = true
+			break
+		}
+	}
+	if !isValid {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid binary name"})
+		return
+	}
+
 	// Validate version format (should start with v)
 	if !strings.HasPrefix(version, "v") {
 		version = "v" + version
