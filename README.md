@@ -50,6 +50,24 @@ Thanks to the following sponsors for supporting this project!
 - 🔐 **Secure Authentication** - JWT authentication protects admin interfaces
 - ⚡ **One-Click Deployment** - Docker / script one-click installation
 
+## 📋 TODO
+
+- [ ] Data aggregation and optimization
+- [ ] Billing and cycle management
+- [ ] Global map view
+- [ ] Performance testing (speedtest / latency)
+- [ ] Media unlock detection
+- [ ] Custom banner / slogan
+- [ ] Referral & affiliate settings
+- [ ] Alert notifications (Email / Telegram / Discord / Webhook)
+- [ ] Custom dashboard layout
+- [ ] Mobile responsive optimization
+- [ ] Server grouping and tagging
+- [ ] Dark / Light theme switching
+- [ ] Custom theme
+- [ ] Improve vstats-cli
+- [ ] Improve vstats-cloud
+
 ## 📚 Documentation & Resources
 
 | Resource | Link |
