@@ -23,12 +23,16 @@ services:
       METRICS_RETENTION_DAYS: ${METRICS_RETENTION_DAYS:-30}
       # 静态文件目录
       STATIC_DIR: /app/static
+      # 二进制文件目录（优先使用本地编译的二进制）
+      BINARY_DIR: /app/binaries
     ports:
       # 只绑定本地，由外部 nginx 代理
       - "127.0.0.1:3001:3001"
     volumes:
       # 前端静态文件挂载到 API 容器
       - ./dist:/app/static:ro
+      # 二进制文件目录（从 GitHub Releases 下载的二进制文件）
+      - ./binaries:/app/binaries:ro
     depends_on:
       postgres:
         condition: service_healthy

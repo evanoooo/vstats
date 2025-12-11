@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"vstats/internal/cloud/config"
 	"vstats/internal/cloud/redis"
 
 	"github.com/gin-gonic/gin"
@@ -142,7 +145,32 @@ func DownloadBinary(c *gin.Context) {
 		return
 	}
 
-	// Download from GitHub
+	// Try to read from local file system first (if BinaryDir is configured)
+	cfg := config.Get()
+	if cfg.BinaryDir != "" {
+		localPath := filepath.Join(cfg.BinaryDir, info.Version, binaryName)
+		if localData, err := os.ReadFile(localPath); err == nil {
+			// Determine content type
+			contentType = "application/octet-stream"
+			if strings.HasSuffix(binaryName, ".tar.gz") {
+				contentType = "application/gzip"
+			} else if strings.HasSuffix(binaryName, ".zip") {
+				contentType = "application/zip"
+			}
+			// Cache the binary (async)
+			go func() {
+				cacheCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				_ = redis.SetBinaryCache(cacheCtx, info.Version, binaryName, localData, contentType, BinaryCacheDuration)
+			}()
+			c.Header("X-Source", "local")
+			c.Header("X-Version", info.Version)
+			c.Data(http.StatusOK, contentType, localData)
+			return
+		}
+	}
+
+	// Download from GitHub (fallback)
 	downloadURL := fmt.Sprintf("%s/%s/%s", GitHubDownload, info.Version, binaryName)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)
@@ -236,7 +264,32 @@ func DownloadBinaryVersion(c *gin.Context) {
 		return
 	}
 
-	// Download from GitHub
+	// Try to read from local file system first (if BinaryDir is configured)
+	cfg := config.Get()
+	if cfg.BinaryDir != "" {
+		localPath := filepath.Join(cfg.BinaryDir, version, binaryName)
+		if localData, err := os.ReadFile(localPath); err == nil {
+			// Determine content type
+			contentType = "application/octet-stream"
+			if strings.HasSuffix(binaryName, ".tar.gz") {
+				contentType = "application/gzip"
+			} else if strings.HasSuffix(binaryName, ".zip") {
+				contentType = "application/zip"
+			}
+			// Cache the binary (async)
+			go func() {
+				cacheCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				_ = redis.SetBinaryCache(cacheCtx, version, binaryName, localData, contentType, BinaryCacheDuration)
+			}()
+			c.Header("X-Source", "local")
+			c.Header("X-Version", version)
+			c.Data(http.StatusOK, contentType, localData)
+			return
+		}
+	}
+
+	// Download from GitHub (fallback)
 	downloadURL := fmt.Sprintf("%s/%s/%s", GitHubDownload, version, binaryName)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)

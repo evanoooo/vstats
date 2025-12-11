@@ -13,6 +13,7 @@ type Config struct {
 	AppURL    string
 	LogLevel  string
 	StaticDir string // 静态文件目录
+	BinaryDir string // 二进制文件目录（优先使用本地编译的二进制）
 
 	// Database
 	DatabaseURL string
@@ -54,7 +55,8 @@ func Load() *Config {
 		Env:       getEnv("APP_ENV", "production"),
 		AppURL:    getEnv("APP_URL", "https://vstats.example.com"),
 		LogLevel:  getEnv("LOG_LEVEL", "info"),
-		StaticDir: getEnv("STATIC_DIR", ""), // 空表示不启用静态文件服务
+		StaticDir: getEnv("STATIC_DIR", ""),              // 空表示不启用静态文件服务
+		BinaryDir: getEnv("BINARY_DIR", "/app/binaries"), // 二进制文件目录，如果设置则优先使用本地文件
 
 		// Database
 		DatabaseURL: getEnv("DATABASE_URL", "postgres://vstats:vstats@postgres:5432/vstats_cloud?sslmode=disable"),

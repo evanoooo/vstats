@@ -1,12 +1,10 @@
 name: Deploy VStats Cloud
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'docs-site/**'
-      - '.github/workflows/deploy-docs-site.yml'
+  workflow_run:
+    workflows: ["Build, Release and Deploy"]
+    types:
+      - completed
   workflow_dispatch:
     inputs:
       deploy_type:
@@ -27,7 +25,9 @@ jobs:
   build:
     name: Build Frontend
     runs-on: ubuntu-latest
-    if: github.event.inputs.deploy_type != 'restart'
+    if: |
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_type != 'restart')
     
     steps:
       - name: Checkout code
@@ -59,7 +59,10 @@ jobs:
     name: Deploy to Server
     runs-on: ubuntu-latest
     needs: [build]
-    if: always() && (needs.build.result == 'success' || github.event.inputs.deploy_type == 'restart')
+    if: |
+      ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+       github.event_name == 'workflow_dispatch') &&
+      (always() && (needs.build.result == 'success' || github.event.inputs.deploy_type == 'restart'))
     
     steps:
       - name: Checkout code
@@ -72,8 +75,36 @@ jobs:
           name: frontend-dist
           path: docs-site/dist/
 
+      - name: Download binaries
+        if: github.event.inputs.deploy_type != 'restart'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p binaries-temp
+          
+          if [ "${{ github.event_name }}" == "workflow_run" ]; then
+            # 从触发的工作流运行中下载 artifacts（使用 GitHub CLI）
+            echo "Downloading artifacts from workflow run: ${{ github.event.workflow_run.id }}"
+            gh run download ${{ github.event.workflow_run.id }} \
+              --pattern "vstats-*" \
+              --dir binaries-temp/ || true
+            
+            # 移动所有二进制文件到根目录
+            find binaries-temp -type f -name "vstats-*" -exec mv {} binaries-temp/ \; 2>/dev/null || true
+            find binaries-temp -type d -empty -delete 2>/dev/null || true
+          else
+            # 手动触发，从最新 release 下载
+            echo "Downloading from latest release..."
+            gh release download --pattern "vstats-*" --dir binaries-temp/ || true
+          fi
+          
+          echo "Downloaded binaries:"
+          ls -lh binaries-temp/ || true
+
       - name: Prepare deployment package
         if: github.event.inputs.deploy_type != 'restart'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd docs-site/deploy
           
@@ -81,9 +112,23 @@ jobs:
           mkdir -p package/dist
           mkdir -p package/db
           mkdir -p package/scripts
+          mkdir -p package/binaries
           
           # 复制前端构建产物
           cp -r ../dist/* package/dist/
+          
+          # 复制二进制文件（按版本组织）
+          if [ -d "../../binaries-temp" ] && [ "$(ls -A ../../binaries-temp 2>/dev/null)" ]; then
+            # 获取版本号（使用 GitHub CLI）
+            VERSION=$(gh release view --json tagName -q '.tagName' 2>/dev/null | sed 's/^v//' || echo "")
+            VERSION_DIR="${VERSION:+v${VERSION}}"
+            VERSION_DIR="${VERSION_DIR:-latest}"
+            
+            mkdir -p "package/binaries/${VERSION_DIR}"
+            find ../../binaries-temp -type f -name "vstats-*" -exec cp {} "package/binaries/${VERSION_DIR}/" \;
+            echo "Binaries copied to: binaries/${VERSION_DIR}/"
+            ls -lh "package/binaries/${VERSION_DIR}/" || true
+          fi
           
           # 复制配置文件
           cp docker-compose.yml package/
@@ -145,6 +190,14 @@ jobs:
               # 解压新部署包
               sudo tar -xzf /tmp/vstats-deploy.tar.gz -C "$DEPLOY_DIR"
               rm -f /tmp/vstats-deploy.tar.gz
+              
+              # 确保 binaries 目录存在并设置权限
+              sudo mkdir -p binaries 2>/dev/null || true
+              if [ -d "binaries" ]; then
+                sudo chmod -R 755 binaries
+                echo ">> Binaries directory ready:"
+                sudo find binaries -type f | head -10 || true
+              fi
               
               # 设置权限
               sudo chmod +x scripts/*.sh 2>/dev/null || true
