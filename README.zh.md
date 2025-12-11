@@ -1,6 +1,6 @@
 # vStats - Server Monitoring Dashboard
 
-**English** | [中文](README.zh.md)
+[English](README.md) | **中文**
 
 [![GitHub Release](https://img.shields.io/github/v/release/zsai001/vstats?style=flat-square)](https://github.com/zsai001/vstats/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
@@ -8,88 +8,86 @@
 ![React](https://img.shields.io/badge/React-20232A?style=flat-square&logo=react&logoColor=61DAFB)
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white)
 
-A minimalist and beautiful server monitoring dashboard. Powered by Go, millisecond-level latency, one-click deployment.
+极简美观的服务器探针监控系统。Go 驱动，毫秒级延迟，一键部署。
 
-## 💝 Sponsors
+## 💝 赞助商
 
 <div align="center">
 
-Thanks to the following sponsors for supporting this project!
+感谢以下赞助商对本项目的支持！
 
 [TOHU Cloud](https://www.tohu.cloud) | [Debee](https://debee.io/)
 
 </div>
 
-## 📸 Preview
+## 📸 预览
 
 <table>
   <tr>
     <td align="center">
-      <img src="https://vstats.zsoft.cc/theme/1.png" alt="Preview 1" width="100%"/>
+      <img src="https://vstats.zsoft.cc/theme/1.png" alt="预览图 1" width="100%"/>
     </td>
     <td align="center">
-      <img src="https://vstats.zsoft.cc/theme/2.png" alt="Preview 2" width="100%"/>
+      <img src="https://vstats.zsoft.cc/theme/2.png" alt="预览图 2" width="100%"/>
     </td>
   </tr>
   <tr>
     <td align="center">
-      <img src="https://vstats.zsoft.cc/theme/3.png" alt="Preview 3" width="100%"/>
+      <img src="https://vstats.zsoft.cc/theme/3.png" alt="预览图 3" width="100%"/>
     </td>
     <td align="center">
-      <img src="https://vstats.zsoft.cc/theme/4.png" alt="Preview 4" width="100%"/>
+      <img src="https://vstats.zsoft.cc/theme/4.png" alt="预览图 4" width="100%"/>
     </td>
   </tr>
 </table>
 
-## ✨ Features
+## ✨ 特性
 
-- 🚀 **Real-time Monitoring** - WebSocket real-time push of system metrics
-- 🖥️ **Multi-Server Management** - Support monitoring multiple servers
-- 💻 **CPU / Memory / Disk / Network** - Comprehensive monitoring
-- 🎨 **Modern UI** - Glassmorphism design with smooth animations
-- 🔐 **Secure Authentication** - JWT authentication protects admin interfaces
-- ⚡ **One-Click Deployment** - Docker / script one-click installation
+- 🚀 **实时监控** - WebSocket 实时推送系统指标
+- 🖥️ **多服务器管理** - 支持监控多台服务器
+- 💻 **CPU / 内存 / 磁盘 / 网络** - 全方位监控
+- 🎨 **现代 UI** - 玻璃拟态设计，流畅动画
+- 🔐 **安全认证** - JWT 认证保护管理接口
+- ⚡ **一键部署** - Docker / 脚本一键安装
 
-## 📚 Documentation & Resources
+## 📚 文档与资源
 
-| Resource | Link |
-|----------|------|
-| 📖 **Full Documentation** | [vstats.zsoft.cc](https://vstats.zsoft.cc) |
-| 🎯 **Online Demo** | [vps.zsoft.cc](https://vps.zsoft.cc/) |
+| 资源 | 链接 |
+|------|------|
+| 📖 **完整文档** | [vstats.zsoft.cc](https://vstats.zsoft.cc) |
+| 🎯 **在线演示** | [vps.zsoft.cc](https://vps.zsoft.cc/) |
 | 🐳 **Docker Hub** | [zsai001/vstats-server](https://hub.docker.com/r/zsai001/vstats-server) |
-| 📦 **GitHub Releases** | [Download Page](https://github.com/zsai001/vstats/releases) |
+| 📦 **GitHub Releases** | [下载页面](https://github.com/zsai001/vstats/releases) |
 
-## 🚀 Quick Start
+## 🚀 快速开始
 
 ```bash
-# Docker one-click deployment
-mkdir -p data
-sudo chown -R 1000:1000 data
+# Docker 一键部署
 docker run -d --name vstats-server -p 3001:3001 \
   -v $(pwd)/data:/app/data zsai001/vstats-server:latest
 ```
 
-For more installation methods, please visit **[Documentation Site](https://vstats.zsoft.cc/docs)**
+更多安装方式请访问 **[文档站点](https://vstats.zsoft.cc/docs)**
 
-## 📦 Script Installation
+## 📦 脚本安装
 
-### Server Installation
+### Server 安装
 
-Use the official installation script to install Server with one command:
+使用官方安装脚本一键安装 Server：
 
 ```bash
 curl -fsSL https://vstats.zsoft.cc/install.sh | sudo bash
 ```
 
-Or use wget:
+或使用 wget：
 
 ```bash
 wget -qO- https://vstats.zsoft.cc/install.sh | sudo bash
 ```
 
-After installation, visit `http://your-server-ip:3001` to access the control panel.
+安装完成后，访问 `http://your-server-ip:3001` 查看控制面板。
 
-**Get Admin Password:**
+**获取管理员密码：**
 
 ```bash
 # Linux
@@ -98,14 +96,14 @@ journalctl -u vstats | grep -i password
 # macOS
 tail -20 ~/.vstats/data/vstats.log | grep -i password
 
-# Or reset password
+# 或重置密码
 /opt/vstats/vstats-server --reset-password  # Linux
 ~/.vstats/vstats-server --reset-password     # macOS
 ```
 
-### Agent Installation
+### Agent 安装
 
-Run the following command on the monitored server to install Agent:
+在被监控的服务器上运行以下命令安装 Agent：
 
 ```bash
 curl -fsSL https://vstats.zsoft.cc/agent.sh | sudo bash -s -- \
@@ -114,177 +112,177 @@ curl -fsSL https://vstats.zsoft.cc/agent.sh | sudo bash -s -- \
   --token "your-admin-token"
 ```
 
-Parameter Description:
-- `--server`: Server access address
-- `--name`: Server display name (optional, defaults to hostname)
-- `--token`: Admin Token (obtained from Server control panel)
+参数说明：
+- `--server`: Server 的访问地址
+- `--name`: 服务器显示名称（可选，默认为主机名）
+- `--token`: 管理员 Token（在 Server 控制面板中获取）
 
-### Upgrade
+### 升级
 
-**Server Upgrade:**
+**Server 升级：**
 
 ```bash
 curl -fsSL https://vstats.zsoft.cc/install.sh | sudo bash -s -- upgrade
 ```
 
-**Agent Upgrade:**
+**Agent 升级：**
 
 ```bash
 curl -fsSL https://vstats.zsoft.cc/agent.sh | sudo bash -s -- --upgrade
 ```
 
-### Uninstall
+### 卸载
 
-**Server Uninstall:**
+**Server 卸载：**
 
 ```bash
 curl -fsSL https://vstats.zsoft.cc/install.sh | sudo bash -s -- uninstall
 ```
 
-**Agent Uninstall:**
+**Agent 卸载：**
 
 ```bash
 curl -fsSL https://vstats.zsoft.cc/agent.sh | sudo bash -s -- --uninstall
 ```
 
-### Service Management
+### 服务管理
 
-After installation, Server and Agent will be registered as systemd services and can be managed using `systemctl` commands.
+安装完成后，Server 和 Agent 会注册为 systemd 服务，可以使用 `systemctl` 命令进行管理。
 
-#### Server Service Management
+#### Server 服务管理
 
-**Check Service Status:**
+**查看服务状态：**
 
 ```bash
 systemctl status vstats
 ```
 
-**Start Service:**
+**启动服务：**
 
 ```bash
 systemctl start vstats
 ```
 
-**Stop Service:**
+**停止服务：**
 
 ```bash
 systemctl stop vstats
 ```
 
-**Restart Service:**
+**重启服务：**
 
 ```bash
 systemctl restart vstats
 ```
 
-**Reload Configuration (without restart):**
+**重新加载配置（无需重启）：**
 
 ```bash
 systemctl reload vstats
 ```
 
-**Enable Auto-start on Boot:**
+**设置开机自启：**
 
 ```bash
 systemctl enable vstats
 ```
 
-**Disable Auto-start on Boot:**
+**取消开机自启：**
 
 ```bash
 systemctl disable vstats
 ```
 
-**View Service Logs:**
+**查看服务日志：**
 
 ```bash
-# View all logs
+# 查看所有日志
 journalctl -u vstats
 
-# View logs in real-time (similar to tail -f)
+# 实时查看日志（类似 tail -f）
 journalctl -u vstats -f
 
-# View last 100 lines of logs
+# 查看最近 100 行日志
 journalctl -u vstats -n 100
 
-# View logs for a specific time period
+# 查看指定时间段的日志
 journalctl -u vstats --since "2024-01-01 00:00:00" --until "2024-01-02 00:00:00"
 ```
 
-#### Agent Service Management
+#### Agent 服务管理
 
-**Check Service Status:**
+**查看服务状态：**
 
 ```bash
 systemctl status vstats-agent
 ```
 
-**Start Service:**
+**启动服务：**
 
 ```bash
 systemctl start vstats-agent
 ```
 
-**Stop Service:**
+**停止服务：**
 
 ```bash
 systemctl stop vstats-agent
 ```
 
-**Restart Service:**
+**重启服务：**
 
 ```bash
 systemctl restart vstats-agent
 ```
 
-**Enable Auto-start on Boot:**
+**设置开机自启：**
 
 ```bash
 systemctl enable vstats-agent
 ```
 
-**Disable Auto-start on Boot:**
+**取消开机自启：**
 
 ```bash
 systemctl disable vstats-agent
 ```
 
-**View Service Logs:**
+**查看服务日志：**
 
 ```bash
-# View all logs
+# 查看所有日志
 journalctl -u vstats-agent
 
-# View logs in real-time
+# 实时查看日志
 journalctl -u vstats-agent -f
 
-# View last 100 lines of logs
+# 查看最近 100 行日志
 journalctl -u vstats-agent -n 100
 ```
 
-#### Common systemctl Commands
+#### 常用 systemctl 命令
 
 ```bash
-# View all enabled services
+# 查看所有已启用的服务
 systemctl list-units --type=service --state=running
 
-# Check if service is running
+# 查看服务是否运行
 systemctl is-active vstats
 systemctl is-active vstats-agent
 
-# Check if service is enabled for auto-start
+# 查看服务是否已启用开机自启
 systemctl is-enabled vstats
 systemctl is-enabled vstats-agent
 
-# Reload systemd configuration (required after modifying service files)
+# 重新加载 systemd 配置（修改服务文件后需要执行）
 systemctl daemon-reload
 ```
 
-## 💬 Feedback
+## 💬 问题反馈
 
-Encountered issues or have suggestions? Welcome to join the Telegram group for real-time feedback:
+遇到问题或有建议？欢迎加入 Telegram 群组进行实时反馈：
 
-👉 [vStats Feedback Group](https://t.me/zsai010_group/10)
+👉 [vStats 问题反馈群](https://t.me/zsai010_group/10)
 
 ## ⭐ Star History
 
@@ -296,10 +294,10 @@ Encountered issues or have suggestions? Welcome to join the Telegram group for r
  </picture>
 </a>
 
-## 📄 License
+## 📄 许可证
 
 MIT License
 
-## 🤝 Contributing
+## 🤝 贡献
 
-Welcome to submit Issues and Pull Requests!
+欢迎提交 Issue 和 Pull Request！
