@@ -219,7 +219,54 @@ CREATE INDEX idx_audit_logs_action ON audit_logs(action);
 CREATE INDEX idx_audit_logs_created_at ON audit_logs(created_at DESC);
 
 -- ========================================
--- 9. Subscription & Billing (Optional)
+-- 9. Auth Reports - OAuth Authorization Reports from Sites
+-- ========================================
+CREATE TABLE auth_reports (
+    id BIGSERIAL PRIMARY KEY,
+    site_url VARCHAR(512) NOT NULL,
+    site_host VARCHAR(255) NOT NULL,  -- Extracted hostname for grouping
+    provider VARCHAR(50) NOT NULL CHECK (provider IN ('github', 'google')),
+    username VARCHAR(255) NOT NULL,
+    ip_address INET,
+    user_agent TEXT,
+    reported_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_auth_reports_site_host ON auth_reports(site_host);
+CREATE INDEX idx_auth_reports_username ON auth_reports(username);
+CREATE INDEX idx_auth_reports_provider ON auth_reports(provider);
+CREATE INDEX idx_auth_reports_reported_at ON auth_reports(reported_at DESC);
+CREATE INDEX idx_auth_reports_date ON auth_reports((reported_at::DATE));
+
+-- View for daily auth statistics
+CREATE OR REPLACE VIEW auth_daily_stats AS
+SELECT 
+    reported_at::DATE AS date,
+    COUNT(DISTINCT site_host) AS unique_sites,
+    COUNT(DISTINCT username) AS unique_users,
+    COUNT(*) AS total_auths,
+    COUNT(DISTINCT CASE WHEN provider = 'github' THEN username END) AS github_users,
+    COUNT(DISTINCT CASE WHEN provider = 'google' THEN username END) AS google_users
+FROM auth_reports
+GROUP BY reported_at::DATE
+ORDER BY date DESC;
+
+-- View for site statistics
+CREATE OR REPLACE VIEW auth_site_stats AS
+SELECT 
+    site_host,
+    site_url,
+    COUNT(DISTINCT username) AS unique_users,
+    COUNT(*) AS total_auths,
+    MIN(reported_at) AS first_seen,
+    MAX(reported_at) AS last_seen,
+    COUNT(DISTINCT reported_at::DATE) AS active_days
+FROM auth_reports
+GROUP BY site_host, site_url
+ORDER BY last_seen DESC;
+
+-- ========================================
+-- 10. Subscription & Billing (Optional)
 -- ========================================
 CREATE TABLE subscriptions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

@@ -151,6 +151,51 @@ type APIKey struct {
 }
 
 // ============================================================================
+// Auth Report Models
+// ============================================================================
+
+type AuthReport struct {
+	ID         int64     `json:"id" db:"id"`
+	SiteURL    string    `json:"site_url" db:"site_url"`
+	SiteHost   string    `json:"site_host" db:"site_host"`
+	Provider   string    `json:"provider" db:"provider"`
+	Username   string    `json:"username" db:"username"`
+	IPAddress  *string   `json:"ip_address,omitempty" db:"ip_address"`
+	UserAgent  *string   `json:"user_agent,omitempty" db:"user_agent"`
+	ReportedAt time.Time `json:"reported_at" db:"reported_at"`
+}
+
+type AuthDailyStats struct {
+	Date        string `json:"date" db:"date"`
+	UniqueSites int    `json:"unique_sites" db:"unique_sites"`
+	UniqueUsers int    `json:"unique_users" db:"unique_users"`
+	TotalAuths  int    `json:"total_auths" db:"total_auths"`
+	GitHubUsers int    `json:"github_users" db:"github_users"`
+	GoogleUsers int    `json:"google_users" db:"google_users"`
+}
+
+type AuthSiteStats struct {
+	SiteHost    string    `json:"site_host" db:"site_host"`
+	SiteURL     string    `json:"site_url" db:"site_url"`
+	UniqueUsers int       `json:"unique_users" db:"unique_users"`
+	TotalAuths  int       `json:"total_auths" db:"total_auths"`
+	FirstSeen   time.Time `json:"first_seen" db:"first_seen"`
+	LastSeen    time.Time `json:"last_seen" db:"last_seen"`
+	ActiveDays  int       `json:"active_days" db:"active_days"`
+}
+
+type AuthOverallStats struct {
+	TotalSites   int `json:"total_sites"`
+	TotalUsers   int `json:"total_users"`
+	TotalAuths   int `json:"total_auths"`
+	TodaySites   int `json:"today_sites"`
+	TodayUsers   int `json:"today_users"`
+	TodayAuths   int `json:"today_auths"`
+	GitHubUsers  int `json:"github_users"`
+	GoogleUsers  int `json:"google_users"`
+}
+
+// ============================================================================
 // Plan Limits
 // ============================================================================
 

@@ -290,13 +290,25 @@ function HistoryChart({ serverId }: { serverId: string }) {
 
   function formatTimeForChart(timestamp: string) {
     const date = new Date(timestamp);
-    if (range === '1h' || range === '24h') {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    switch (range) {
+      case '1h':
+        // 按分钟: "14:35"
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      case '24h':
+        // 按小时: "14:00"
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      case '7d':
+        // 按天: "12/10" 或 "Dec 10"
+        return date.toLocaleDateString([], { month: 'numeric', day: 'numeric' });
+      case '30d':
+        // 按天: "12/10" 或 "Dec 10"
+        return date.toLocaleDateString([], { month: 'numeric', day: 'numeric' });
+      case '1y':
+        // 按月: "Dec" 或 "12月"
+        return date.toLocaleDateString([], { month: 'short' });
+      default:
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
-    if (range === '1y') {
-      return date.toLocaleDateString([], { month: 'short', year: '2-digit' });
-    }
-    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
   }
 
   function formatFullTime(timestamp: string) {
@@ -315,6 +327,19 @@ function HistoryChart({ serverId }: { serverId: string }) {
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+  };
+
+  // Calculate tick interval to show ~8-10 evenly spaced labels on X axis
+  const xAxisInterval = useMemo(() => {
+    const validPoints = sampledData.filter(d => d.formattedTime !== '');
+    if (validPoints.length <= 10) return 0; // Show all labels if few points
+    return Math.floor(validPoints.length / 8); // ~8 labels across the chart
+  }, [sampledData]);
+
+  // Calculate interval for ping data (which may have different length)
+  const calcPingInterval = (dataLength: number) => {
+    if (dataLength <= 10) return 0;
+    return Math.floor(dataLength / 8);
   };
 
   // Single Line Chart Component (no animation, no fill)
@@ -366,8 +391,8 @@ function HistoryChart({ serverId }: { serverId: string }) {
                 axisLine={false}
                 tickLine={false}
                 tick={{ fill: chartTheme.tickColor, fontSize: 10 }}
-                interval="preserveStartEnd"
-                minTickGap={50}
+                interval={xAxisInterval}
+                tickFormatter={(value) => value || ''}
               />
               <YAxis
                 domain={maxValue ? [0, maxValue] : ['auto', 'auto']}
@@ -431,8 +456,8 @@ function HistoryChart({ serverId }: { serverId: string }) {
               axisLine={false}
               tickLine={false}
               tick={{ fill: chartTheme.tickColor, fontSize: 10 }}
-              interval="preserveStartEnd"
-              minTickGap={50}
+              interval={xAxisInterval}
+              tickFormatter={(value) => value || ''}
             />
             <YAxis
               domain={maxValue ? [0, maxValue] : ['auto', 'auto']}
@@ -498,8 +523,8 @@ function HistoryChart({ serverId }: { serverId: string }) {
                 axisLine={false}
                 tickLine={false}
                 tick={{ fill: chartTheme.tickColor, fontSize: 10 }}
-                interval="preserveStartEnd"
-                minTickGap={50}
+                interval={xAxisInterval}
+                tickFormatter={(value) => value || ''}
               />
               <YAxis
                 axisLine={false}
@@ -850,8 +875,8 @@ function HistoryChart({ serverId }: { serverId: string }) {
                       axisLine={false}
                       tickLine={false}
                       tick={{ fill: chartTheme.tickColor, fontSize: 10 }}
-                      interval="preserveStartEnd"
-                      minTickGap={50}
+                      interval={calcPingInterval(combinedPingData.length)}
+                      tickFormatter={(value) => value || ''}
                     />
                     <YAxis
                       axisLine={false}
@@ -989,8 +1014,8 @@ function HistoryChart({ serverId }: { serverId: string }) {
                     axisLine={false}
                     tickLine={false}
                     tick={{ fill: chartTheme.tickColor, fontSize: 10 }}
-                    interval="preserveStartEnd"
-                    minTickGap={50}
+                    interval={calcPingInterval(pingChartData.length)}
+                    tickFormatter={(value) => value || ''}
                   />
                   <YAxis
                     axisLine={false}

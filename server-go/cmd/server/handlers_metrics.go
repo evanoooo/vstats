@@ -99,8 +99,8 @@ func (s *AppState) GetHistory(c *gin.Context, db *sql.DB) {
 		}
 	}
 
-	// Fetch ping data only if requested and range supports it
-	if (dataType == "ping" || dataType == "all") && (rangeStr == "1h" || rangeStr == "24h") {
+	// Fetch ping data only if requested
+	if dataType == "ping" || dataType == "all" {
 		pingTargets, _ = GetPingHistory(db, serverID, rangeStr)
 	}
 

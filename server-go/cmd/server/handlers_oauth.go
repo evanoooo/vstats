@@ -21,6 +21,7 @@ var (
 )
 
 const CentralizedOAuthURL = "https://vstats-oauth-proxy.zsai001.workers.dev"
+const VCloudReportURL = "https://vcloud.zsoft.cc/api/auth/report"
 
 // ============================================================================
 // OAuth 2.0 Handlers
@@ -271,6 +272,10 @@ func (s *AppState) GitHubOAuthCallback(c *gin.Context) {
 		return
 	}
 
+	// Report auth event to VCloud
+	siteURL := getSiteURL(c)
+	reportAuthToVCloud(siteURL, "github", user.Login)
+
 	// Redirect to frontend with token
 	redirectWithToken(c, token, expiresAt, "github", user.Login)
 }
@@ -384,6 +389,10 @@ func (s *AppState) GoogleOAuthCallback(c *gin.Context) {
 		return
 	}
 
+	// Report auth event to VCloud
+	siteURL := getSiteURL(c)
+	reportAuthToVCloud(siteURL, "google", user.Email)
+
 	// Redirect to frontend with token
 	redirectWithToken(c, token, expiresAt, "google", user.Email)
 }
@@ -449,6 +458,10 @@ func (s *AppState) ProxyOAuthCallback(c *gin.Context) {
 		return
 	}
 
+	// Report auth event to VCloud
+	siteURL := getSiteURL(c)
+	reportAuthToVCloud(siteURL, provider, user)
+
 	// Redirect to frontend with token
 	redirectWithToken(c, token, expiresAt, provider, user)
 }
@@ -473,6 +486,20 @@ func getCallbackURL(c *gin.Context, provider string) string {
 	}
 
 	return fmt.Sprintf("%s://%s/api/auth/oauth/%s/callback", protocol, c.Request.Host, provider)
+}
+
+func getSiteURL(c *gin.Context) string {
+	protocol := "https"
+
+	if proto := c.GetHeader("X-Forwarded-Proto"); proto != "" {
+		protocol = proto
+	} else if c.Request.TLS != nil {
+		protocol = "https"
+	} else if strings.Contains(c.Request.Host, "localhost") || strings.HasPrefix(c.Request.Host, "127.") {
+		protocol = "http"
+	}
+
+	return fmt.Sprintf("%s://%s", protocol, c.Request.Host)
 }
 
 func exchangeGitHubCode(code, clientID, clientSecret, redirectURI string) (*GitHubTokenResponse, error) {
@@ -631,4 +658,34 @@ func cleanupOAuthStates() {
 			delete(oauthStates, state)
 		}
 	}
+}
+
+// reportAuthToVCloud reports auth event to VCloud service
+// This runs asynchronously and does not block the auth flow
+func reportAuthToVCloud(siteURL, provider, username string) {
+	go func() {
+		payload := map[string]string{
+			"site_url": siteURL,
+			"provider": provider,
+			"username": username,
+		}
+
+		jsonData, err := json.Marshal(payload)
+		if err != nil {
+			return
+		}
+
+		req, err := http.NewRequest("POST", VCloudReportURL, strings.NewReader(string(jsonData)))
+		if err != nil {
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			return
+		}
+		defer resp.Body.Close()
+	}()
 }

@@ -97,6 +97,9 @@ func main() {
 	r.GET("/api/auth/oauth/google", handlers.GoogleOAuthStart)
 	r.GET("/api/auth/oauth/google/callback", handlers.GoogleOAuthCallback)
 
+	// Auth Reports (public endpoint for sites to report auth events)
+	r.POST("/api/auth/report", handlers.ReportAuth)
+
 	// Agent WebSocket (authenticated by agent_key)
 	r.GET("/ws/agent", websocket.HandleAgentWS)
 
@@ -130,6 +133,13 @@ func main() {
 			userID := middleware.GetUserID(c)
 			websocket.HandleDashboardWS(c, userID)
 		})
+
+		// Auth Reports Stats (admin endpoints)
+		auth.GET("/admin/auth-stats", handlers.GetAuthOverallStats)
+		auth.GET("/admin/auth-stats/daily", handlers.GetAuthDailyStats)
+		auth.GET("/admin/auth-stats/sites", handlers.GetAuthSiteStats)
+		auth.GET("/admin/auth-stats/sites/:site_host", handlers.GetAuthUsersBySite)
+		auth.GET("/admin/auth-stats/date/:date", handlers.GetAuthUsersByDate)
 	}
 
 	// ============================================================================
