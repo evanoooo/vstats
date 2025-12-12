@@ -126,8 +126,28 @@ func InitDatabase() (*sql.DB, error) {
 			load_5 REAL NOT NULL,
 			load_15 REAL NOT NULL,
 			ping_ms REAL,
+			bucket_5min INTEGER,
 			created_at TEXT DEFAULT CURRENT_TIMESTAMP
 		);
+		
+		-- 15-minute aggregated metrics (keep for 7 days, for 7d range with 720 points)
+		CREATE TABLE IF NOT EXISTS metrics_15min (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			server_id TEXT NOT NULL,
+			bucket_start TEXT NOT NULL,
+			cpu_avg REAL NOT NULL,
+			cpu_max REAL NOT NULL,
+			memory_avg REAL NOT NULL,
+			memory_max REAL NOT NULL,
+			disk_avg REAL NOT NULL,
+			net_rx_total INTEGER NOT NULL,
+			net_tx_total INTEGER NOT NULL,
+			ping_avg REAL,
+			sample_count INTEGER NOT NULL,
+			UNIQUE(server_id, bucket_start)
+		);
+		
+		CREATE INDEX IF NOT EXISTS idx_metrics_15min_server_time ON metrics_15min(server_id, bucket_start);
 		
 		-- Hourly aggregated metrics (keep for 30 days)
 		CREATE TABLE IF NOT EXISTS metrics_hourly (
@@ -166,6 +186,7 @@ func InitDatabase() (*sql.DB, error) {
 		
 		-- Create indexes
 		CREATE INDEX IF NOT EXISTS idx_metrics_raw_server_time ON metrics_raw(server_id, timestamp);
+		CREATE INDEX IF NOT EXISTS idx_metrics_raw_server_bucket ON metrics_raw(server_id, bucket_5min);
 		CREATE INDEX IF NOT EXISTS idx_metrics_hourly_server_time ON metrics_hourly(server_id, hour_start);
 		CREATE INDEX IF NOT EXISTS idx_metrics_daily_server_time ON metrics_daily(server_id, date);
 		
@@ -178,11 +199,13 @@ func InitDatabase() (*sql.DB, error) {
 			target_host TEXT NOT NULL,
 			latency_ms REAL,
 			packet_loss REAL NOT NULL DEFAULT 0,
-			status TEXT NOT NULL DEFAULT 'ok'
+			status TEXT NOT NULL DEFAULT 'ok',
+			bucket_5min INTEGER
 		);
 		
 		CREATE INDEX IF NOT EXISTS idx_ping_raw_server_time ON ping_raw(server_id, timestamp);
 		CREATE INDEX IF NOT EXISTS idx_ping_raw_target ON ping_raw(server_id, target_name, timestamp);
+		CREATE INDEX IF NOT EXISTS idx_ping_raw_server_bucket ON ping_raw(server_id, bucket_5min);
 	`)
 	if err != nil {
 		return nil, err
@@ -192,6 +215,18 @@ func InitDatabase() (*sql.DB, error) {
 	db.Exec("ALTER TABLE metrics_raw ADD COLUMN ping_ms REAL")
 	db.Exec("ALTER TABLE metrics_hourly ADD COLUMN ping_avg REAL")
 	db.Exec("ALTER TABLE metrics_daily ADD COLUMN ping_avg REAL")
+
+	// Migration: Add bucket_5min column for efficient 24h sampling (actually stores 2-min buckets for 720 points)
+	db.Exec("ALTER TABLE metrics_raw ADD COLUMN bucket_5min INTEGER")
+	db.Exec("ALTER TABLE ping_raw ADD COLUMN bucket_5min INTEGER")
+
+	// Create indexes for bucket_5min (ignore error if already exists)
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_metrics_raw_server_bucket ON metrics_raw(server_id, bucket_5min)")
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_ping_raw_server_bucket ON ping_raw(server_id, bucket_5min)")
+
+	// Backfill bucket for existing data - use 120 seconds (2 min) for 720 points over 24h
+	db.Exec("UPDATE metrics_raw SET bucket_5min = CAST(strftime('%s', timestamp) AS INTEGER) / 120 WHERE bucket_5min IS NULL OR bucket_5min > 100000000")
+	db.Exec("UPDATE ping_raw SET bucket_5min = CAST(strftime('%s', timestamp) AS INTEGER) / 120 WHERE bucket_5min IS NULL OR bucket_5min > 100000000")
 
 	return db, nil
 }
@@ -228,6 +263,8 @@ func storeMetricsInternal(db *sql.DB, serverID string, metrics *SystemMetrics) e
 	}
 
 	timestamp := metrics.Timestamp.Format(time.RFC3339)
+	// Pre-compute 2-minute bucket for efficient 24h sampling (720 points over 24h)
+	bucket5min := metrics.Timestamp.Unix() / 120
 
 	// Get average ping latency from all targets
 	var pingMs *float64
@@ -247,8 +284,8 @@ func storeMetricsInternal(db *sql.DB, serverID string, metrics *SystemMetrics) e
 	}
 
 	_, err := db.Exec(`
-		INSERT INTO metrics_raw (server_id, timestamp, cpu_usage, memory_usage, disk_usage, net_rx, net_tx, load_1, load_5, load_15, ping_ms)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO metrics_raw (server_id, timestamp, cpu_usage, memory_usage, disk_usage, net_rx, net_tx, load_1, load_5, load_15, ping_ms, bucket_5min)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		serverID,
 		timestamp,
 		metrics.CPU.Usage,
@@ -260,6 +297,7 @@ func storeMetricsInternal(db *sql.DB, serverID string, metrics *SystemMetrics) e
 		metrics.LoadAverage.Five,
 		metrics.LoadAverage.Fifteen,
 		pingMs,
+		bucket5min,
 	)
 	if err != nil {
 		return err
@@ -269,8 +307,8 @@ func storeMetricsInternal(db *sql.DB, serverID string, metrics *SystemMetrics) e
 	if metrics.Ping != nil {
 		for _, target := range metrics.Ping.Targets {
 			_, err := db.Exec(`
-				INSERT INTO ping_raw (server_id, timestamp, target_name, target_host, latency_ms, packet_loss, status)
-				VALUES (?, ?, ?, ?, ?, ?, ?)`,
+				INSERT INTO ping_raw (server_id, timestamp, target_name, target_host, latency_ms, packet_loss, status, bucket_5min)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 				serverID,
 				timestamp,
 				target.Name,
@@ -278,6 +316,7 @@ func storeMetricsInternal(db *sql.DB, serverID string, metrics *SystemMetrics) e
 				target.LatencyMs,
 				target.PacketLoss,
 				target.Status,
+				bucket5min,
 			)
 			if err != nil {
 				fmt.Printf("Failed to store ping target: %v\n", err)
@@ -286,6 +325,45 @@ func storeMetricsInternal(db *sql.DB, serverID string, metrics *SystemMetrics) e
 	}
 
 	return nil
+}
+
+func Aggregate15Min(db *sql.DB) error {
+	if dbWriter != nil {
+		return dbWriter.WriteSync(aggregate15MinInternal)
+	}
+	return aggregate15MinInternal(db)
+}
+
+func aggregate15MinInternal(db *sql.DB) error {
+	// Aggregate raw data from the last hour into 15-minute buckets
+	// This runs every 15 minutes, processing data from 15-30 minutes ago
+	now := time.Now().UTC()
+	// Round down to the previous 15-minute boundary
+	minuteOffset := now.Minute() % 15
+	bucketEnd := now.Add(-time.Duration(minuteOffset) * time.Minute).Truncate(time.Minute)
+	bucketStart := bucketEnd.Add(-15 * time.Minute)
+
+	_, err := db.Exec(`
+		INSERT OR REPLACE INTO metrics_15min (server_id, bucket_start, cpu_avg, cpu_max, memory_avg, memory_max, disk_avg, net_rx_total, net_tx_total, ping_avg, sample_count)
+		SELECT 
+			server_id,
+			? as bucket_start,
+			AVG(cpu_usage),
+			MAX(cpu_usage),
+			AVG(memory_usage),
+			MAX(memory_usage),
+			AVG(disk_usage),
+			MAX(net_rx) - MIN(net_rx),
+			MAX(net_tx) - MIN(net_tx),
+			AVG(ping_ms),
+			COUNT(*)
+		FROM metrics_raw
+		WHERE timestamp >= ? AND timestamp < ?
+		GROUP BY server_id`,
+		bucketStart.Format(time.RFC3339),
+		bucketStart.Format(time.RFC3339),
+		bucketEnd.Format(time.RFC3339))
+	return err
 }
 
 func AggregateHourly(db *sql.DB) error {
@@ -300,20 +378,21 @@ func aggregateHourlyInternal(db *sql.DB) error {
 	hourStart := hourAgo.Format("2006-01-02T15:00:00Z")
 
 	_, err := db.Exec(`
-		INSERT OR REPLACE INTO metrics_hourly (server_id, hour_start, cpu_avg, cpu_max, memory_avg, memory_max, disk_avg, net_rx_total, net_tx_total, sample_count)
+		INSERT OR REPLACE INTO metrics_hourly (server_id, hour_start, cpu_avg, cpu_max, memory_avg, memory_max, disk_avg, net_rx_total, net_tx_total, ping_avg, sample_count)
 		SELECT 
 			server_id,
-			strftime('%Y-%m-%dT%H:00:00Z', timestamp) as hour,
-			AVG(cpu_usage),
-			MAX(cpu_usage),
-			AVG(memory_usage),
-			MAX(memory_usage),
-			AVG(disk_usage),
-			MAX(net_rx) - MIN(net_rx),
-			MAX(net_tx) - MIN(net_tx),
-			COUNT(*)
-		FROM metrics_raw
-		WHERE timestamp >= ? AND timestamp < datetime(?, '+1 hour')
+			strftime('%Y-%m-%dT%H:00:00Z', bucket_start) as hour,
+			AVG(cpu_avg),
+			MAX(cpu_max),
+			AVG(memory_avg),
+			MAX(memory_max),
+			AVG(disk_avg),
+			SUM(net_rx_total),
+			SUM(net_tx_total),
+			AVG(ping_avg),
+			SUM(sample_count)
+		FROM metrics_15min
+		WHERE bucket_start >= ? AND bucket_start < datetime(?, '+1 hour')
 		GROUP BY server_id, hour`, hourStart, hourStart)
 	return err
 }
@@ -367,6 +446,12 @@ func cleanupOldDataInternal(db *sql.DB) error {
 		return err
 	}
 
+	// Delete 15-min data older than 7 days
+	cutoff15min := time.Now().UTC().Add(-7 * 24 * time.Hour).Format(time.RFC3339)
+	if _, err := db.Exec("DELETE FROM metrics_15min WHERE bucket_start < ?", cutoff15min); err != nil {
+		return err
+	}
+
 	// Delete hourly data older than 30 days
 	cutoffHourly := time.Now().UTC().AddDate(0, 0, -30).Format(time.RFC3339)
 	if _, err := db.Exec("DELETE FROM metrics_hourly WHERE hour_start < ?", cutoffHourly); err != nil {
@@ -390,39 +475,80 @@ func GetHistory(db *sql.DB, serverID, rangeStr string) ([]HistoryPoint, error) {
 			ORDER BY timestamp ASC`, serverID, cutoff)
 
 	case "24h":
-		cutoff := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
+		// Use 2-min buckets for 720 data points over 24h (24*60/2 = 720)
+		// bucket_5min now stores epoch/120 (2-min buckets)
+		cutoffBucket := time.Now().UTC().Add(-24*time.Hour).Unix() / 120
 		rows, err = db.Query(`
-			SELECT timestamp, cpu_usage, memory_usage, disk_usage, net_rx, net_tx, ping_ms
-			FROM metrics_raw WHERE server_id = ? AND timestamp >= ?
-			AND (CAST(strftime('%s', timestamp) AS INTEGER) % 300) < 60
-			ORDER BY timestamp ASC`, serverID, cutoff)
+			SELECT 
+				MIN(timestamp) as timestamp,
+				AVG(cpu_usage) as cpu_usage,
+				AVG(memory_usage) as memory_usage,
+				AVG(disk_usage) as disk_usage,
+				MAX(net_rx) as net_rx,
+				MAX(net_tx) as net_tx,
+				AVG(ping_ms) as ping_ms
+			FROM metrics_raw 
+			WHERE server_id = ? AND bucket_5min >= ?
+			GROUP BY bucket_5min
+			ORDER BY bucket_5min ASC
+			LIMIT 720`, serverID, cutoffBucket)
 
 	case "7d":
-		cutoff := time.Now().UTC().AddDate(0, 0, -7).Format(time.RFC3339)
+		// 7d with 720 points = ~14 min intervals
+		// Use 15-min aggregated data (672 points max, close to 720)
+		cutoff := time.Now().UTC().Add(-7 * 24 * time.Hour).Format(time.RFC3339)
+		rows, err = db.Query(`
+			SELECT bucket_start, cpu_avg, memory_avg, disk_avg, net_rx_total, net_tx_total, ping_avg
+			FROM metrics_15min 
+			WHERE server_id = ? AND bucket_start >= ?
+			ORDER BY bucket_start ASC
+			LIMIT 720`, serverID, cutoff)
+
+	case "30d":
+		// 30d = 720 hours, for 720 points we need 1 hour intervals (use hourly data directly)
+		cutoff := time.Now().UTC().AddDate(0, 0, -30).Format(time.RFC3339)
 		rows, err = db.Query(`
 			SELECT hour_start, cpu_avg, memory_avg, disk_avg, net_rx_total, net_tx_total, ping_avg
 			FROM metrics_hourly WHERE server_id = ? AND hour_start >= ?
-			ORDER BY hour_start ASC`, serverID, cutoff)
+			ORDER BY hour_start ASC
+			LIMIT 720`, serverID, cutoff)
 
-	case "30d", "1y":
-		var days int
-		if rangeStr == "30d" {
-			days = -30
-		} else {
-			days = -365
-		}
-		cutoff := time.Now().UTC().AddDate(0, 0, days).Format("2006-01-02")
+	case "1y":
+		// 1y = 365 days, for 720 points we need ~12 hour intervals
+		// Use daily data and duplicate each point, or use hourly with sampling
+		cutoff := time.Now().UTC().AddDate(0, 0, -365).Format(time.RFC3339)
 		rows, err = db.Query(`
-			SELECT date, cpu_avg, memory_avg, disk_avg, net_rx_total, net_tx_total, ping_avg
-			FROM metrics_daily WHERE server_id = ? AND date >= ?
-			ORDER BY date ASC`, serverID, cutoff)
+			SELECT 
+				MIN(hour_start) as timestamp,
+				AVG(cpu_avg) as cpu_avg,
+				AVG(memory_avg) as memory_avg,
+				AVG(disk_avg) as disk_avg,
+				SUM(net_rx_total) as net_rx_total,
+				SUM(net_tx_total) as net_tx_total,
+				AVG(ping_avg) as ping_avg
+			FROM metrics_hourly 
+			WHERE server_id = ? AND hour_start >= ?
+			GROUP BY date(hour_start), (CAST(strftime('%H', hour_start) AS INTEGER) / 12)
+			ORDER BY MIN(hour_start) ASC
+			LIMIT 720`, serverID, cutoff)
 
 	default:
-		cutoff := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
+		// Default to 24h with 720 points
+		cutoffBucket := time.Now().UTC().Add(-24*time.Hour).Unix() / 120
 		rows, err = db.Query(`
-			SELECT timestamp, cpu_usage, memory_usage, disk_usage, net_rx, net_tx, ping_ms
-			FROM metrics_raw WHERE server_id = ? AND timestamp >= ?
-			ORDER BY timestamp ASC`, serverID, cutoff)
+			SELECT 
+				MIN(timestamp) as timestamp,
+				AVG(cpu_usage) as cpu_usage,
+				AVG(memory_usage) as memory_usage,
+				AVG(disk_usage) as disk_usage,
+				MAX(net_rx) as net_rx,
+				MAX(net_tx) as net_tx,
+				AVG(ping_ms) as ping_ms
+			FROM metrics_raw 
+			WHERE server_id = ? AND bucket_5min >= ?
+			GROUP BY bucket_5min
+			ORDER BY bucket_5min ASC
+			LIMIT 720`, serverID, cutoffBucket)
 	}
 
 	if err != nil {
@@ -443,29 +569,33 @@ func GetHistory(db *sql.DB, serverID, rangeStr string) ([]HistoryPoint, error) {
 }
 
 func GetPingHistory(db *sql.DB, serverID, rangeStr string) ([]PingHistoryTarget, error) {
-	var cutoff string
+	var rows *sql.Rows
+	var err error
+
 	if rangeStr == "1h" {
-		cutoff = time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)
-	} else {
-		cutoff = time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
-	}
-
-	query := `
-		SELECT target_name, target_host, timestamp, latency_ms, status
-		FROM ping_raw 
-		WHERE server_id = ? AND timestamp >= ?
-		ORDER BY target_name, timestamp ASC`
-
-	if rangeStr == "24h" {
-		query = `
+		cutoff := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)
+		rows, err = db.Query(`
 			SELECT target_name, target_host, timestamp, latency_ms, status
 			FROM ping_raw 
 			WHERE server_id = ? AND timestamp >= ?
-			AND (CAST(strftime('%s', timestamp) AS INTEGER) % 300) < 60
-			ORDER BY target_name, timestamp ASC`
+			ORDER BY target_name, timestamp ASC`, serverID, cutoff)
+	} else {
+		// Use 2-min buckets for efficient 24h sampling (720 points)
+		cutoffBucket := time.Now().UTC().Add(-24*time.Hour).Unix() / 120
+		rows, err = db.Query(`
+			SELECT 
+				target_name,
+				target_host,
+				MIN(timestamp) as timestamp,
+				AVG(latency_ms) as latency_ms,
+				-- Pick the most common status (simplified: use the first one)
+				MIN(status) as status
+			FROM ping_raw 
+			WHERE server_id = ? AND bucket_5min >= ?
+			GROUP BY target_name, target_host, bucket_5min
+			ORDER BY target_name, bucket_5min ASC`, serverID, cutoffBucket)
 	}
 
-	rows, err := db.Query(query, serverID, cutoff)
 	if err != nil {
 		return nil, err
 	}

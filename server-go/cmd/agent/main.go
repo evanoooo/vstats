@@ -18,6 +18,11 @@ import (
 // AgentVersion will be set at build time via -ldflags
 var AgentVersion = "dev"
 
+func init() {
+	// Limit agent to use only 1 OS thread to minimize resource usage
+	runtime.GOMAXPROCS(1)
+}
+
 func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {

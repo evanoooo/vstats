@@ -58,6 +58,28 @@ func (s *AppState) HandleDashboardWS(c *gin.Context) {
 	}
 }
 
+// StreamInitMessage is sent first with metadata and server count
+type StreamInitMessage struct {
+	Type            string           `json:"type"`
+	TotalServers    int              `json:"total_servers"`
+	Groups          []ServerGroup    `json:"groups,omitempty"`
+	GroupDimensions []GroupDimension `json:"group_dimensions,omitempty"`
+	SiteSettings    *SiteSettings    `json:"site_settings,omitempty"`
+}
+
+// StreamServerMessage is sent for each server
+type StreamServerMessage struct {
+	Type   string              `json:"type"`
+	Index  int                 `json:"index"`
+	Total  int                 `json:"total"`
+	Server ServerMetricsUpdate `json:"server"`
+}
+
+// StreamEndMessage signals the end of initial data
+type StreamEndMessage struct {
+	Type string `json:"type"`
+}
+
 func (s *AppState) sendInitialState(conn *websocket.Conn) {
 	s.ConfigMu.RLock()
 	config := s.Config
@@ -70,12 +92,26 @@ func (s *AppState) sendInitialState(conn *websocket.Conn) {
 	}
 	s.AgentMetricsMu.RUnlock()
 
-	// Collect local metrics
+	totalServers := 1 + len(config.Servers) // local + remote
+
+	// Step 1: Send init message with metadata (fast, allows UI to prepare)
+	initMsg := StreamInitMessage{
+		Type:            "stream_init",
+		TotalServers:    totalServers,
+		Groups:          config.Groups,
+		GroupDimensions: config.GroupDimensions,
+		SiteSettings:    &config.SiteSettings,
+	}
+	initData, _ := json.Marshal(initMsg)
+	if err := conn.WriteMessage(websocket.TextMessage, initData); err != nil {
+		return
+	}
+
+	// Step 2: Stream servers one by one
+	index := 0
+
+	// Local node first (usually fastest)
 	localMetrics := CollectMetrics()
-
-	var updates []ServerMetricsUpdate
-
-	// Add local node
 	localNode := config.LocalNode
 	localName := "Dashboard Server"
 	if localNode.Name != "" {
@@ -86,25 +122,35 @@ func (s *AppState) sendInitialState(conn *websocket.Conn) {
 		provider = localNode.Provider
 	}
 
-	updates = append(updates, ServerMetricsUpdate{
-		ServerID:     "local",
-		ServerName:   localName,
-		Location:     localNode.Location,
-		Provider:     provider,
-		Tag:          localNode.Tag,
-		GroupID:      localNode.GroupID,
-		GroupValues:  localNode.GroupValues,
-		Version:      ServerVersion,
-		IP:           "",
-		Online:       true,
-		Metrics:      &localMetrics,
-		PriceAmount:  localNode.PriceAmount,
-		PricePeriod:  localNode.PricePeriod,
-		PurchaseDate: localNode.PurchaseDate,
-		TipBadge:     localNode.TipBadge,
-	})
+	localServer := StreamServerMessage{
+		Type:  "stream_server",
+		Index: index,
+		Total: totalServers,
+		Server: ServerMetricsUpdate{
+			ServerID:     "local",
+			ServerName:   localName,
+			Location:     localNode.Location,
+			Provider:     provider,
+			Tag:          localNode.Tag,
+			GroupID:      localNode.GroupID,
+			GroupValues:  localNode.GroupValues,
+			Version:      ServerVersion,
+			IP:           "",
+			Online:       true,
+			Metrics:      &localMetrics,
+			PriceAmount:  localNode.PriceAmount,
+			PricePeriod:  localNode.PricePeriod,
+			PurchaseDate: localNode.PurchaseDate,
+			TipBadge:     localNode.TipBadge,
+		},
+	}
+	localData, _ := json.Marshal(localServer)
+	if err := conn.WriteMessage(websocket.TextMessage, localData); err != nil {
+		return
+	}
+	index++
 
-	// Add remote servers
+	// Remote servers
 	for _, server := range config.Servers {
 		metricsData := agentMetrics[server.ID]
 		online := false
@@ -122,35 +168,39 @@ func (s *AppState) sendInitialState(conn *websocket.Conn) {
 			metrics = &metricsData.Metrics
 		}
 
-		updates = append(updates, ServerMetricsUpdate{
-			ServerID:     server.ID,
-			ServerName:   server.Name,
-			Location:     server.Location,
-			Provider:     server.Provider,
-			Tag:          server.Tag,
-			GroupID:      server.GroupID,
-			GroupValues:  server.GroupValues,
-			Version:      version,
-			IP:           server.IP,
-			Online:       online,
-			Metrics:      metrics,
-			PriceAmount:  server.PriceAmount,
-			PricePeriod:  server.PricePeriod,
-			PurchaseDate: server.PurchaseDate,
-			TipBadge:     server.TipBadge,
-		})
+		serverMsg := StreamServerMessage{
+			Type:  "stream_server",
+			Index: index,
+			Total: totalServers,
+			Server: ServerMetricsUpdate{
+				ServerID:     server.ID,
+				ServerName:   server.Name,
+				Location:     server.Location,
+				Provider:     server.Provider,
+				Tag:          server.Tag,
+				GroupID:      server.GroupID,
+				GroupValues:  server.GroupValues,
+				Version:      version,
+				IP:           server.IP,
+				Online:       online,
+				Metrics:      metrics,
+				PriceAmount:  server.PriceAmount,
+				PricePeriod:  server.PricePeriod,
+				PurchaseDate: server.PurchaseDate,
+				TipBadge:     server.TipBadge,
+			},
+		}
+		serverData, _ := json.Marshal(serverMsg)
+		if err := conn.WriteMessage(websocket.TextMessage, serverData); err != nil {
+			return
+		}
+		index++
 	}
 
-	msg := DashboardMessage{
-		Type:            "metrics",
-		Servers:         updates,
-		Groups:          config.Groups,
-		GroupDimensions: config.GroupDimensions,
-		SiteSettings:    &config.SiteSettings,
-	}
-
-	data, _ := json.Marshal(msg)
-	conn.WriteMessage(websocket.TextMessage, data)
+	// Step 3: Send end message
+	endMsg := StreamEndMessage{Type: "stream_end"}
+	endData, _ := json.Marshal(endMsg)
+	conn.WriteMessage(websocket.TextMessage, endData)
 }
 
 func (s *AppState) BroadcastMetrics(msg string) {

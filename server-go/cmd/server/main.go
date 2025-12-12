@@ -131,6 +131,7 @@ func main() {
 
 	// Start background tasks
 	go metricsBroadcastLoop(state)
+	go aggregation15MinLoop(db)
 	go aggregationLoop(state, db)
 	go cleanupLoop(db)
 
@@ -456,6 +457,25 @@ func metricsBroadcastLoop(state *AppState) {
 			if data, err := json.Marshal(msg); err == nil {
 				state.BroadcastMetrics(string(data))
 			}
+		}
+	}
+}
+
+func aggregation15MinLoop(db *sql.DB) {
+	// Run every 15 minutes to aggregate raw data into 15-min buckets
+	ticker := time.NewTicker(15 * time.Minute)
+	defer ticker.Stop()
+
+	// Also run once at startup after a short delay to catch up
+	time.AfterFunc(30*time.Second, func() {
+		if err := Aggregate15Min(db); err != nil {
+			fmt.Printf("Failed to aggregate 15-min data (startup): %v\n", err)
+		}
+	})
+
+	for range ticker.C {
+		if err := Aggregate15Min(db); err != nil {
+			fmt.Printf("Failed to aggregate 15-min data: %v\n", err)
 		}
 	}
 }

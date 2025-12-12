@@ -84,15 +84,23 @@ func (s *AppState) GetAllMetrics(c *gin.Context) {
 func (s *AppState) GetHistory(c *gin.Context, db *sql.DB) {
 	serverID := c.Param("server_id")
 	rangeStr := c.DefaultQuery("range", "24h")
+	dataType := c.DefaultQuery("type", "all") // "ping", "metrics", or "all"
 
-	data, err := GetHistory(db, serverID, rangeStr)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch history"})
-		return
+	var data []HistoryPoint
+	var pingTargets []PingHistoryTarget
+	var err error
+
+	// Fetch metrics data only if requested
+	if dataType == "metrics" || dataType == "all" {
+		data, err = GetHistory(db, serverID, rangeStr)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch history"})
+			return
+		}
 	}
 
-	var pingTargets []PingHistoryTarget
-	if rangeStr == "1h" || rangeStr == "24h" {
+	// Fetch ping data only if requested and range supports it
+	if (dataType == "ping" || dataType == "all") && (rangeStr == "1h" || rangeStr == "24h") {
 		pingTargets, _ = GetPingHistory(db, serverID, rangeStr)
 	}
 

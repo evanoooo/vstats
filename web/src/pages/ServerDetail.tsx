@@ -114,12 +114,19 @@ function HistoryChart({ serverId }: { serverId: string }) {
   const { isDark } = useTheme();
   const isLight = !isDark;
   const [range, setRange] = useState<TimeRange>('24h');
-  const [tab, setTab] = useState<HistoryTab>('overview');
+  const [tab, setTab] = useState<HistoryTab>('ping'); // Default to ping tab
   const [data, setData] = useState<HistoryPoint[]>([]);
   const [pingTargets, setPingTargets] = useState<PingHistoryTarget[]>([]);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [isFetching, setIsFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Track which data types have been loaded for current range
+  const [loadedData, setLoadedData] = useState<{ range: string; ping: boolean; metrics: boolean }>({
+    range: '',
+    ping: false,
+    metrics: false,
+  });
   
   // Theme-aware colors for chart elements
   const chartTheme = {
@@ -128,18 +135,59 @@ function HistoryChart({ serverId }: { serverId: string }) {
     legendColor: isLight ? '#4b5563' : '#9ca3af',
   };
 
+  // Determine what data type is needed for current tab
+  // Ping tab needs ping data for 1h/24h, but needs metrics data for 7d/30d/1y (fallback to ping_ms)
+  const pingRangeSupported = range === '1h' || range === '24h';
+  const needsPingData = tab === 'ping' && pingRangeSupported;
+  const needsMetricsData = tab !== 'ping' || (tab === 'ping' && !pingRangeSupported);
+
+  useEffect(() => {
+    // Reset loaded data state when range changes
+    if (loadedData.range !== range) {
+      setLoadedData({ range, ping: false, metrics: false });
+      setData([]);
+      setPingTargets([]);
+    }
+  }, [range, loadedData.range]);
+
   useEffect(() => {
     const fetchHistory = async () => {
-      if (isInitialLoad) {
+      // Determine what to fetch based on current tab and what's already loaded
+      const shouldFetchPing = needsPingData && !loadedData.ping && loadedData.range === range;
+      const shouldFetchMetrics = needsMetricsData && !loadedData.metrics && loadedData.range === range;
+      
+      // Skip if we already have the data we need
+      if (!shouldFetchPing && !shouldFetchMetrics && loadedData.range === range) {
+        return;
+      }
+
+      // Determine the type parameter
+      let dataType = 'all';
+      if (shouldFetchPing && !shouldFetchMetrics) {
+        dataType = 'ping';
+      } else if (shouldFetchMetrics && !shouldFetchPing) {
+        dataType = 'metrics';
+      }
+
+      if (isInitialLoad || (shouldFetchPing || shouldFetchMetrics)) {
         setIsFetching(true);
       }
       setError(null);
+      
       try {
-        const res = await fetch(`/api/history/${serverId}?range=${range}`);
+        const res = await fetch(`/api/history/${serverId}?range=${range}&type=${dataType}`);
         if (!res.ok) throw new Error('Failed to fetch history');
         const json: HistoryResponse = await res.json();
-        setData(json.data || []);
-        setPingTargets(json.ping_targets || []);
+        
+        // Update data based on what was fetched
+        if (dataType === 'ping' || dataType === 'all') {
+          setPingTargets(json.ping_targets || []);
+          setLoadedData(prev => ({ ...prev, ping: true }));
+        }
+        if (dataType === 'metrics' || dataType === 'all') {
+          setData(json.data || []);
+          setLoadedData(prev => ({ ...prev, metrics: true }));
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Unknown error');
       } finally {
@@ -147,8 +195,9 @@ function HistoryChart({ serverId }: { serverId: string }) {
         setIsInitialLoad(false);
       }
     };
+    
     fetchHistory();
-  }, [serverId, range]);
+  }, [serverId, range, tab, needsPingData, needsMetricsData, loadedData, isInitialLoad]);
 
   const ranges: { value: TimeRange; label: string }[] = [
     { value: '1h', label: '1H' },
@@ -159,24 +208,85 @@ function HistoryChart({ serverId }: { serverId: string }) {
   ];
 
   const tabs: { value: HistoryTab; label: string; color: string }[] = [
+    { value: 'ping', label: t('serverDetail.history.ping'), color: 'rose' },
     { value: 'overview', label: t('serverDetail.history.overview'), color: 'emerald' },
     { value: 'cpu', label: t('serverDetail.history.cpu'), color: 'blue' },
     { value: 'memory', label: t('serverDetail.history.memory'), color: 'purple' },
     { value: 'disk', label: t('serverDetail.history.disk'), color: 'amber' },
     { value: 'network', label: t('serverDetail.history.network'), color: 'cyan' },
-    { value: 'ping', label: t('serverDetail.history.ping'), color: 'rose' },
   ];
 
-  // Sample data for display (max 120 points for smooth line rendering)
-  const sampleRate = Math.max(1, Math.floor(data.length / 120));
-  const sampledData = useMemo(() => 
-    data.filter((_, i) => i % sampleRate === 0).map((point, index) => ({
-      ...point,
-      index,
-      formattedTime: formatTimeForChart(point.timestamp),
-    })),
-    [data, sampleRate]
-  );
+  // Expected interval between points based on range (in milliseconds)
+  const expectedInterval = useMemo(() => {
+    switch (range) {
+      case '1h': return 5 * 1000; // 5 seconds
+      case '24h': return 2 * 60 * 1000; // 2 minutes
+      case '7d': return 15 * 60 * 1000; // 15 minutes (672 points over 7 days from 15-min aggregates)
+      case '30d': return 60 * 60 * 1000; // 1 hour
+      case '1y': return 12 * 60 * 60 * 1000; // 12 hours
+      default: return 2 * 60 * 1000;
+    }
+  }, [range]);
+
+  // Process data and insert null points for gaps (to break line connections)
+  const sampledData = useMemo(() => {
+    if (data.length === 0) return [];
+    
+    const result: Array<{
+      timestamp: string;
+      cpu: number | null;
+      memory: number | null;
+      disk: number | null;
+      net_rx: number | null;
+      net_tx: number | null;
+      ping_ms: number | null;
+      index: number;
+      formattedTime: string;
+    }> = [];
+    
+    // Gap threshold: 3x expected interval means data is missing
+    const gapThreshold = expectedInterval * 3;
+    
+    for (let i = 0; i < data.length; i++) {
+      const point = data[i];
+      const currentTime = new Date(point.timestamp).getTime();
+      
+      // Check if there's a gap from previous point
+      if (i > 0) {
+        const prevTime = new Date(data[i - 1].timestamp).getTime();
+        const gap = currentTime - prevTime;
+        
+        if (gap > gapThreshold) {
+          // Insert a null point to break the line
+          result.push({
+            timestamp: new Date(prevTime + expectedInterval).toISOString(),
+            cpu: null,
+            memory: null,
+            disk: null,
+            net_rx: null,
+            net_tx: null,
+            ping_ms: null,
+            index: result.length,
+            formattedTime: '',
+          });
+        }
+      }
+      
+      result.push({
+        ...point,
+        cpu: point.cpu,
+        memory: point.memory,
+        disk: point.disk,
+        net_rx: point.net_rx,
+        net_tx: point.net_tx,
+        ping_ms: point.ping_ms ?? null,
+        index: result.length,
+        formattedTime: formatTimeForChart(point.timestamp),
+      });
+    }
+    
+    return result;
+  }, [data, expectedInterval]);
 
   function formatTimeForChart(timestamp: string) {
     const date = new Date(timestamp);
@@ -288,6 +398,7 @@ function HistoryChart({ serverId }: { serverId: string }) {
                 activeDot={{ r: 4, strokeWidth: 2, stroke: colorSet.stroke, fill: isLight ? '#ffffff' : '#1f2937' }}
                 name={label}
                 isAnimationActive={false}
+                connectNulls={false}
               />
             </LineChart>
           </ResponsiveContainer>
@@ -361,6 +472,7 @@ function HistoryChart({ serverId }: { serverId: string }) {
                 activeDot={{ r: 4, strokeWidth: 2, stroke: chartColors[color].stroke, fill: isLight ? '#ffffff' : '#1f2937' }}
                 name={label}
                 isAnimationActive={false}
+                connectNulls={false}
               />
             ))}
           </LineChart>
@@ -424,6 +536,7 @@ function HistoryChart({ serverId }: { serverId: string }) {
                 activeDot={{ r: 4, strokeWidth: 2, stroke: '#10b981', fill: isLight ? '#ffffff' : '#1f2937' }}
                 name="Upload (TX)"
                 isAnimationActive={false}
+                connectNulls={false}
               />
               <Line
                 type="monotone"
@@ -434,6 +547,7 @@ function HistoryChart({ serverId }: { serverId: string }) {
                 activeDot={{ r: 4, strokeWidth: 2, stroke: '#06b6d4', fill: isLight ? '#ffffff' : '#1f2937' }}
                 name="Download (RX)"
                 isAnimationActive={false}
+                connectNulls={false}
               />
             </LineChart>
           </ResponsiveContainer>
@@ -458,7 +572,13 @@ function HistoryChart({ serverId }: { serverId: string }) {
 
   // Render content based on tab
   const renderContent = () => {
-    if (isInitialLoad && isFetching) {
+    // Show loading spinner when fetching data for current tab
+    const isLoadingCurrentTab = isFetching && (
+      (needsPingData && !loadedData.ping) || 
+      (needsMetricsData && !loadedData.metrics)
+    );
+
+    if (isLoadingCurrentTab) {
       return (
         <div className="h-64 flex items-center justify-center">
           <div className="w-8 h-8 border-2 border-white/20 border-t-emerald-500 rounded-full animate-spin" />
@@ -474,7 +594,13 @@ function HistoryChart({ serverId }: { serverId: string }) {
       );
     }
 
-    if (data.length === 0) {
+    // Check for no data based on current tab
+    // For ping tab with unsupported range, check metrics data instead
+    const hasNoData = tab === 'ping' 
+      ? (pingRangeSupported ? pingTargets.length === 0 : data.length === 0)
+      : data.length === 0;
+
+    if (hasNoData && !isFetching) {
       return (
         <div className="h-64 flex items-center justify-center text-gray-500 text-sm">
           {t('serverDetail.history.noData')}
@@ -630,12 +756,8 @@ function HistoryChart({ serverId }: { serverId: string }) {
         
         // Check if we have detailed ping target data
         if (pingTargets.length > 0) {
-          // Merge all ping targets into one chart
-          const sampleRate = Math.max(1, Math.floor((pingTargets[0]?.data?.length || 0) / 120));
-          
-          // Create combined chart data with all targets
+          // Create combined chart data with all targets (backend returns optimal density)
           const combinedPingData = pingTargets[0]?.data
-            .filter((_, i) => i % sampleRate === 0)
             .map((d, i) => {
               const point: Record<string, number | string | null> = {
                 index: i,
@@ -644,7 +766,7 @@ function HistoryChart({ serverId }: { serverId: string }) {
               };
               // Add each target's latency to the point
               pingTargets.forEach((target, targetIdx) => {
-                const targetData = target.data.filter((_, j) => j % sampleRate === 0)[i];
+                const targetData = target.data[i];
                 point[`ping_${targetIdx}`] = targetData?.latency_ms ?? null;
               });
               return point;
@@ -898,6 +1020,7 @@ function HistoryChart({ serverId }: { serverId: string }) {
                     activeDot={{ r: 4, strokeWidth: 2, stroke: '#f43f5e', fill: isLight ? '#ffffff' : '#1f2937' }}
                     name="Latency"
                     isAnimationActive={false}
+                    connectNulls={false}
                   />
                 </LineChart>
               </ResponsiveContainer>
