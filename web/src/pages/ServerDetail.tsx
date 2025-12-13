@@ -233,50 +233,50 @@ function HistoryChart({ serverId }: { serverId: string }) {
     { value: 'network', label: t('serverDetail.history.network'), color: 'cyan' },
   ];
 
-  // Number of points for each time range on x-axis
+  // Number of points for each time range (matching backend bucket sizes)
   const getGridConfig = useMemo(() => {
     const now = Date.now();
     switch (range) {
       case '1h': 
         return { 
-          points: 30, 
+          points: 720, 
           duration: 60 * 60 * 1000, // 1 hour in ms
-          interval: 60 * 60 * 1000 / 30, // 2 minutes per point
+          interval: 5 * 1000, // 5 seconds per point (720 points)
           startTime: now - 60 * 60 * 1000
         };
       case '24h': 
         return { 
-          points: 36, 
+          points: 720, 
           duration: 24 * 60 * 60 * 1000, // 24 hours in ms
-          interval: 24 * 60 * 60 * 1000 / 36, // 40 minutes per point
+          interval: 2 * 60 * 1000, // 2 minutes per point (720 points)
           startTime: now - 24 * 60 * 60 * 1000
         };
       case '7d': 
         return { 
-          points: 28, 
+          points: 672, 
           duration: 7 * 24 * 60 * 60 * 1000, // 7 days in ms
-          interval: 7 * 24 * 60 * 60 * 1000 / 28, // 6 hours per point
+          interval: 15 * 60 * 1000, // 15 minutes per point (672 points)
           startTime: now - 7 * 24 * 60 * 60 * 1000
         };
       case '30d': 
         return { 
-          points: 30, 
+          points: 720, 
           duration: 30 * 24 * 60 * 60 * 1000, // 30 days in ms
-          interval: 30 * 24 * 60 * 60 * 1000 / 30, // 1 day per point
+          interval: 60 * 60 * 1000, // 1 hour per point (720 points)
           startTime: now - 30 * 24 * 60 * 60 * 1000
         };
       case '1y': 
         return { 
-          points: 36, 
+          points: 730, 
           duration: 365 * 24 * 60 * 60 * 1000, // 1 year in ms
-          interval: 365 * 24 * 60 * 60 * 1000 / 36, // ~10 days per point
+          interval: 12 * 60 * 60 * 1000, // 12 hours per point (730 points)
           startTime: now - 365 * 24 * 60 * 60 * 1000
         };
       default: 
         return { 
-          points: 36, 
+          points: 720, 
           duration: 24 * 60 * 60 * 1000,
-          interval: 24 * 60 * 60 * 1000 / 36,
+          interval: 2 * 60 * 1000,
           startTime: now - 24 * 60 * 60 * 1000
         };
     }
@@ -441,7 +441,8 @@ function HistoryChart({ serverId }: { serverId: string }) {
   const xAxisInterval = useMemo(() => {
     const { points } = getGridConfig;
     if (points <= 12) return 0; // Show all labels if few points
-    return Math.floor(points / 10) - 1; // ~10-12 labels across the chart
+    // For 720 points, show ~12 labels (interval = 60)
+    return Math.floor(points / 12) - 1;
   }, [getGridConfig]);
 
   // Single Line Chart Component (no animation, no fill)
