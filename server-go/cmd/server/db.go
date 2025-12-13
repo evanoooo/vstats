@@ -634,25 +634,33 @@ func GetHistory(db *sql.DB, serverID, rangeStr string) ([]HistoryPoint, error) {
 			LIMIT 720`, serverID, cutoffBucket)
 
 	case "7d":
-		// First try aggregated table, if empty fall back to real-time aggregation from raw data
+		// 7d with 6-hour buckets (~28 points to match frontend grid)
 		cutoff := time.Now().UTC().Add(-7 * 24 * time.Hour).Format(time.RFC3339)
 		var count int
 		db.QueryRow(`SELECT COUNT(*) FROM metrics_15min WHERE server_id = ? AND bucket_start >= ?`,
 			serverID, cutoff).Scan(&count)
 
 		if count > 0 {
-			// Use pre-aggregated 15-min data
-			rows, err = db.Query(`
-				SELECT bucket_start, cpu_avg, memory_avg, disk_avg, net_rx_total, net_tx_total, ping_avg
-				FROM metrics_15min 
-				WHERE server_id = ? AND bucket_start >= ?
-				ORDER BY bucket_start ASC
-				LIMIT 720`, serverID, cutoff)
-		} else {
-			// Fall back to real-time aggregation from raw data (15-min buckets = 900 seconds)
+			// Use pre-aggregated 15-min data, group into 6-hour buckets (21600 seconds)
 			rows, err = db.Query(`
 				SELECT 
-					datetime((strftime('%s', timestamp) / 900) * 900, 'unixepoch') as bucket_start,
+					MIN(bucket_start) as bucket_start,
+					AVG(cpu_avg) as cpu_avg,
+					AVG(memory_avg) as memory_avg,
+					AVG(disk_avg) as disk_avg,
+					SUM(net_rx_total) as net_rx_total,
+					SUM(net_tx_total) as net_tx_total,
+					AVG(ping_avg) as ping_avg
+				FROM metrics_15min 
+				WHERE server_id = ? AND bucket_start >= ?
+				GROUP BY (CAST(strftime('%s', bucket_start) AS INTEGER) / 21600)
+				ORDER BY MIN(bucket_start) ASC
+				LIMIT 50`, serverID, cutoff)
+		} else {
+			// Fall back to real-time aggregation from raw data (6-hour buckets = 21600 seconds)
+			rows, err = db.Query(`
+				SELECT 
+					datetime((strftime('%s', timestamp) / 21600) * 21600, 'unixepoch') as bucket_start,
 					AVG(cpu_usage) as cpu_avg,
 					AVG(memory_usage) as memory_avg,
 					AVG(disk_usage) as disk_avg,
@@ -661,25 +669,34 @@ func GetHistory(db *sql.DB, serverID, rangeStr string) ([]HistoryPoint, error) {
 					AVG(ping_ms) as ping_avg
 				FROM metrics_raw 
 				WHERE server_id = ? AND timestamp >= ?
-				GROUP BY strftime('%s', timestamp) / 900
+				GROUP BY strftime('%s', timestamp) / 21600
 				ORDER BY bucket_start ASC
-				LIMIT 720`, serverID, cutoff)
+				LIMIT 50`, serverID, cutoff)
 		}
 
 	case "30d":
-		// First try hourly aggregated table, if empty fall back to real-time aggregation
+		// 30d with daily buckets (~30 points to match frontend grid)
 		cutoff := time.Now().UTC().AddDate(0, 0, -30).Format(time.RFC3339)
 		var count int
 		db.QueryRow(`SELECT COUNT(*) FROM metrics_hourly WHERE server_id = ? AND hour_start >= ?`,
 			serverID, cutoff).Scan(&count)
 
 		if count > 0 {
-			// Use pre-aggregated hourly data
+			// Use pre-aggregated hourly data, group into daily buckets
 			rows, err = db.Query(`
-				SELECT hour_start, cpu_avg, memory_avg, disk_avg, net_rx_total, net_tx_total, ping_avg
-				FROM metrics_hourly WHERE server_id = ? AND hour_start >= ?
-				ORDER BY hour_start ASC
-				LIMIT 720`, serverID, cutoff)
+				SELECT 
+					MIN(hour_start) as hour_start,
+					AVG(cpu_avg) as cpu_avg,
+					AVG(memory_avg) as memory_avg,
+					AVG(disk_avg) as disk_avg,
+					SUM(net_rx_total) as net_rx_total,
+					SUM(net_tx_total) as net_tx_total,
+					AVG(ping_avg) as ping_avg
+				FROM metrics_hourly 
+				WHERE server_id = ? AND hour_start >= ?
+				GROUP BY date(hour_start)
+				ORDER BY MIN(hour_start) ASC
+				LIMIT 50`, serverID, cutoff)
 		} else {
 			// Try 15-min table first
 			var count15 int
@@ -687,10 +704,10 @@ func GetHistory(db *sql.DB, serverID, rangeStr string) ([]HistoryPoint, error) {
 				serverID, cutoff).Scan(&count15)
 
 			if count15 > 0 {
-				// Aggregate from 15-min data to hourly
+				// Aggregate from 15-min data to daily
 				rows, err = db.Query(`
 					SELECT 
-						strftime('%Y-%m-%dT%H:00:00Z', bucket_start) as hour_start,
+						MIN(bucket_start) as hour_start,
 						AVG(cpu_avg) as cpu_avg,
 						AVG(memory_avg) as memory_avg,
 						AVG(disk_avg) as disk_avg,
@@ -699,14 +716,14 @@ func GetHistory(db *sql.DB, serverID, rangeStr string) ([]HistoryPoint, error) {
 						AVG(ping_avg) as ping_avg
 					FROM metrics_15min 
 					WHERE server_id = ? AND bucket_start >= ?
-					GROUP BY strftime('%Y-%m-%dT%H:00:00Z', bucket_start)
-					ORDER BY hour_start ASC
-					LIMIT 720`, serverID, cutoff)
+					GROUP BY date(bucket_start)
+					ORDER BY MIN(bucket_start) ASC
+					LIMIT 50`, serverID, cutoff)
 			} else {
-				// Fall back to raw data with hourly aggregation (3600 seconds)
+				// Fall back to raw data with daily aggregation
 				rows, err = db.Query(`
 					SELECT 
-						strftime('%Y-%m-%dT%H:00:00Z', timestamp) as hour_start,
+						MIN(timestamp) as hour_start,
 						AVG(cpu_usage) as cpu_avg,
 						AVG(memory_usage) as memory_avg,
 						AVG(disk_usage) as disk_avg,
@@ -715,21 +732,21 @@ func GetHistory(db *sql.DB, serverID, rangeStr string) ([]HistoryPoint, error) {
 						AVG(ping_ms) as ping_avg
 					FROM metrics_raw 
 					WHERE server_id = ? AND timestamp >= ?
-					GROUP BY strftime('%Y-%m-%dT%H:00:00Z', timestamp)
-					ORDER BY hour_start ASC
-					LIMIT 720`, serverID, cutoff)
+					GROUP BY date(timestamp)
+					ORDER BY MIN(timestamp) ASC
+					LIMIT 50`, serverID, cutoff)
 			}
 		}
 
 	case "1y":
-		// 1y = 365 days, for 720 points we need ~12 hour intervals
+		// 1y with 10-day buckets (~36 points to match frontend grid, 864000 seconds = 10 days)
 		cutoff := time.Now().UTC().AddDate(0, 0, -365).Format(time.RFC3339)
 		var count int
 		db.QueryRow(`SELECT COUNT(*) FROM metrics_hourly WHERE server_id = ? AND hour_start >= ?`,
 			serverID, cutoff).Scan(&count)
 
 		if count > 0 {
-			// Use hourly data with 12-hour grouping
+			// Use hourly data with 10-day grouping
 			rows, err = db.Query(`
 				SELECT 
 					MIN(hour_start) as timestamp,
@@ -741,11 +758,11 @@ func GetHistory(db *sql.DB, serverID, rangeStr string) ([]HistoryPoint, error) {
 					AVG(ping_avg) as ping_avg
 				FROM metrics_hourly 
 				WHERE server_id = ? AND hour_start >= ?
-				GROUP BY date(hour_start), (CAST(strftime('%H', hour_start) AS INTEGER) / 12)
+				GROUP BY (CAST(strftime('%s', hour_start) AS INTEGER) / 864000)
 				ORDER BY MIN(hour_start) ASC
-				LIMIT 720`, serverID, cutoff)
+				LIMIT 50`, serverID, cutoff)
 		} else {
-			// Fall back to raw data with 12-hour aggregation
+			// Fall back to raw data with 10-day aggregation
 			rows, err = db.Query(`
 				SELECT 
 					MIN(timestamp) as timestamp,
@@ -757,9 +774,9 @@ func GetHistory(db *sql.DB, serverID, rangeStr string) ([]HistoryPoint, error) {
 					AVG(ping_ms) as ping_avg
 				FROM metrics_raw 
 				WHERE server_id = ? AND timestamp >= ?
-				GROUP BY date(timestamp), (CAST(strftime('%H', timestamp) AS INTEGER) / 12)
+				GROUP BY (CAST(strftime('%s', timestamp) AS INTEGER) / 864000)
 				ORDER BY MIN(timestamp) ASC
-				LIMIT 720`, serverID, cutoff)
+				LIMIT 50`, serverID, cutoff)
 		}
 
 	default:
@@ -834,58 +851,60 @@ func GetPingHistory(db *sql.DB, serverID, rangeStr string) ([]PingHistoryTarget,
 			ORDER BY target_name, bucket_5min ASC`, serverID, cutoffBucket)
 
 	case "7d":
-		// 7d with 15-min buckets (672 points max)
+		// 7d with 6-hour buckets (~28 points to match frontend grid)
 		cutoff := time.Now().UTC().Add(-7 * 24 * time.Hour).Format(time.RFC3339)
 		var count int
 		db.QueryRow(`SELECT COUNT(*) FROM ping_15min WHERE server_id = ? AND bucket_start >= ?`,
 			serverID, cutoff).Scan(&count)
 
 		if count > 0 {
-			// Use pre-aggregated 15-min data
+			// Use pre-aggregated 15-min data, group into 6-hour buckets
 			rows, err = db.Query(`
 				SELECT 
 					target_name,
 					target_host,
-					bucket_start,
-					latency_avg as latency_ms,
-					CASE WHEN fail_count > 0 THEN 'error' ELSE 'ok' END as status
+					MIN(bucket_start) as bucket_start,
+					AVG(latency_avg) as latency_ms,
+					CASE WHEN SUM(CASE WHEN fail_count > 0 THEN 1 ELSE 0 END) > 0 THEN 'error' ELSE 'ok' END as status
 				FROM ping_15min 
 				WHERE server_id = ? AND bucket_start >= ?
-				ORDER BY target_name, bucket_start ASC`, serverID, cutoff)
+				GROUP BY target_name, target_host, (CAST(strftime('%s', bucket_start) AS INTEGER) / 21600)
+				ORDER BY target_name, MIN(bucket_start) ASC`, serverID, cutoff)
 		} else {
-			// Fall back to real-time aggregation from raw data
+			// Fall back to real-time aggregation from raw data (6-hour buckets = 21600 seconds)
 			rows, err = db.Query(`
 				SELECT 
 					target_name,
 					target_host,
-					datetime((strftime('%s', timestamp) / 900) * 900, 'unixepoch') as bucket_start,
+					datetime((strftime('%s', timestamp) / 21600) * 21600, 'unixepoch') as bucket_start,
 					AVG(latency_ms) as latency_ms,
 					MIN(status) as status
 				FROM ping_raw 
 				WHERE server_id = ? AND timestamp >= ?
-				GROUP BY target_name, target_host, strftime('%s', timestamp) / 900
+				GROUP BY target_name, target_host, strftime('%s', timestamp) / 21600
 				ORDER BY target_name, bucket_start ASC`, serverID, cutoff)
 		}
 
 	case "30d":
-		// 30d with hourly buckets (720 points max)
+		// 30d with daily buckets (~30 points to match frontend grid)
 		cutoff := time.Now().UTC().AddDate(0, 0, -30).Format(time.RFC3339)
 		var count int
 		db.QueryRow(`SELECT COUNT(*) FROM ping_hourly WHERE server_id = ? AND hour_start >= ?`,
 			serverID, cutoff).Scan(&count)
 
 		if count > 0 {
-			// Use pre-aggregated hourly data
+			// Use pre-aggregated hourly data, group into daily buckets
 			rows, err = db.Query(`
 				SELECT 
 					target_name,
 					target_host,
-					hour_start,
-					latency_avg as latency_ms,
-					CASE WHEN fail_count > 0 THEN 'error' ELSE 'ok' END as status
+					MIN(hour_start) as hour_start,
+					AVG(latency_avg) as latency_ms,
+					CASE WHEN SUM(fail_count) > 0 THEN 'error' ELSE 'ok' END as status
 				FROM ping_hourly 
 				WHERE server_id = ? AND hour_start >= ?
-				ORDER BY target_name, hour_start ASC`, serverID, cutoff)
+				GROUP BY target_name, target_host, date(hour_start)
+				ORDER BY target_name, MIN(hour_start) ASC`, serverID, cutoff)
 		} else {
 			// Try 15-min table first
 			var count15 int
@@ -893,43 +912,43 @@ func GetPingHistory(db *sql.DB, serverID, rangeStr string) ([]PingHistoryTarget,
 				serverID, cutoff).Scan(&count15)
 
 			if count15 > 0 {
-				// Aggregate from 15-min data to hourly
+				// Aggregate from 15-min data to daily
 				rows, err = db.Query(`
 					SELECT 
 						target_name,
 						target_host,
-						strftime('%Y-%m-%dT%H:00:00Z', bucket_start) as hour_start,
+						MIN(bucket_start) as hour_start,
 						AVG(latency_avg) as latency_ms,
 						CASE WHEN SUM(fail_count) > 0 THEN 'error' ELSE 'ok' END as status
 					FROM ping_15min 
 					WHERE server_id = ? AND bucket_start >= ?
-					GROUP BY target_name, target_host, strftime('%Y-%m-%dT%H:00:00Z', bucket_start)
-					ORDER BY target_name, hour_start ASC`, serverID, cutoff)
+					GROUP BY target_name, target_host, date(bucket_start)
+					ORDER BY target_name, MIN(bucket_start) ASC`, serverID, cutoff)
 			} else {
-				// Fall back to raw data with hourly aggregation
+				// Fall back to raw data with daily aggregation
 				rows, err = db.Query(`
 					SELECT 
 						target_name,
 						target_host,
-						strftime('%Y-%m-%dT%H:00:00Z', timestamp) as hour_start,
+						MIN(timestamp) as hour_start,
 						AVG(latency_ms) as latency_ms,
 						MIN(status) as status
 					FROM ping_raw 
 					WHERE server_id = ? AND timestamp >= ?
-					GROUP BY target_name, target_host, strftime('%Y-%m-%dT%H:00:00Z', timestamp)
-					ORDER BY target_name, hour_start ASC`, serverID, cutoff)
+					GROUP BY target_name, target_host, date(timestamp)
+					ORDER BY target_name, MIN(timestamp) ASC`, serverID, cutoff)
 			}
 		}
 
 	case "1y":
-		// 1y with 12-hour buckets (730 points max)
+		// 1y with 10-day buckets (~36 points to match frontend grid)
 		cutoff := time.Now().UTC().AddDate(0, 0, -365).Format(time.RFC3339)
 		var count int
 		db.QueryRow(`SELECT COUNT(*) FROM ping_hourly WHERE server_id = ? AND hour_start >= ?`,
 			serverID, cutoff).Scan(&count)
 
 		if count > 0 {
-			// Use hourly data with 12-hour grouping
+			// Use hourly data with 10-day grouping (864000 seconds = 10 days)
 			rows, err = db.Query(`
 				SELECT 
 					target_name,
@@ -939,10 +958,10 @@ func GetPingHistory(db *sql.DB, serverID, rangeStr string) ([]PingHistoryTarget,
 					CASE WHEN SUM(fail_count) > 0 THEN 'error' ELSE 'ok' END as status
 				FROM ping_hourly 
 				WHERE server_id = ? AND hour_start >= ?
-				GROUP BY target_name, target_host, date(hour_start), (CAST(strftime('%H', hour_start) AS INTEGER) / 12)
+				GROUP BY target_name, target_host, (CAST(strftime('%s', hour_start) AS INTEGER) / 864000)
 				ORDER BY target_name, MIN(hour_start) ASC`, serverID, cutoff)
 		} else {
-			// Fall back to raw data with 12-hour aggregation
+			// Fall back to raw data with 10-day aggregation (864000 seconds = 10 days)
 			rows, err = db.Query(`
 				SELECT 
 					target_name,
@@ -952,7 +971,7 @@ func GetPingHistory(db *sql.DB, serverID, rangeStr string) ([]PingHistoryTarget,
 					MIN(status) as status
 				FROM ping_raw 
 				WHERE server_id = ? AND timestamp >= ?
-				GROUP BY target_name, target_host, date(timestamp), (CAST(strftime('%H', timestamp) AS INTEGER) / 12)
+				GROUP BY target_name, target_host, (CAST(strftime('%s', timestamp) AS INTEGER) / 864000)
 				ORDER BY target_name, MIN(timestamp) ASC`, serverID, cutoff)
 		}
 
