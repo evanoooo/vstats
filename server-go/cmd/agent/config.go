@@ -18,6 +18,12 @@ type AgentConfig struct {
 	Location     string `json:"location"`
 	Provider     string `json:"provider"`
 	IntervalSecs uint64 `json:"interval_secs"`
+	// Offline storage settings
+	EnableOfflineStorage bool   `json:"enable_offline_storage"` // Enable local storage when disconnected (default: true)
+	DataDir              string `json:"data_dir,omitempty"`     // Directory for local data storage
+	MaxOfflineRecords    int    `json:"max_offline_records"`    // Max records to store offline (default: 10000)
+	AggregationSecs      int    `json:"aggregation_secs"`       // Aggregation interval in seconds (default: 60)
+	BatchSize            int    `json:"batch_size"`             // Max metrics per batch when syncing (default: 100)
 }
 
 func DefaultConfigPath() string {
@@ -72,7 +78,7 @@ func LoadConfigFromEnv() *AgentConfig {
 		}
 	}
 
-	return &AgentConfig{
+	config := &AgentConfig{
 		DashboardURL: dashboardURL,
 		ServerID:     serverID,
 		AgentToken:   agentToken,
@@ -81,6 +87,21 @@ func LoadConfigFromEnv() *AgentConfig {
 		Provider:     os.Getenv("VSTATS_PROVIDER"),
 		IntervalSecs: intervalSecs,
 	}
+	
+	// Set defaults for offline storage
+	setConfigDefaults(config)
+	
+	// Allow environment override for offline storage
+	if os.Getenv("VSTATS_OFFLINE_STORAGE") == "false" {
+		config.EnableOfflineStorage = false
+	} else {
+		config.EnableOfflineStorage = true
+	}
+	if dir := os.Getenv("VSTATS_DATA_DIR"); dir != "" {
+		config.DataDir = dir
+	}
+	
+	return config
 }
 
 func LoadConfig(path string) (*AgentConfig, error) {
@@ -104,7 +125,30 @@ func LoadConfig(path string) (*AgentConfig, error) {
 		config.IntervalSecs = 5
 	}
 
+	// Set defaults for offline storage
+	setConfigDefaults(&config)
+
 	return &config, nil
+}
+
+// setConfigDefaults sets default values for config fields
+func setConfigDefaults(config *AgentConfig) {
+	// Enable offline storage by default
+	// Note: EnableOfflineStorage defaults to false in JSON, so we check if it's explicitly disabled
+	// We use a helper flag in the config file to detect if it was explicitly set
+	
+	if config.MaxOfflineRecords == 0 {
+		config.MaxOfflineRecords = 10000
+	}
+	if config.AggregationSecs == 0 {
+		config.AggregationSecs = 60
+	}
+	if config.BatchSize == 0 {
+		config.BatchSize = 100
+	}
+	if config.DataDir == "" {
+		config.DataDir = GetDataDir()
+	}
 }
 
 func SaveConfig(config *AgentConfig, path string) error {

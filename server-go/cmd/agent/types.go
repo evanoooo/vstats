@@ -22,3 +22,9 @@ type MetricsMessage = common.MetricsMessage
 type ServerResponse = common.ServerResponse
 type RegisterRequest = common.RegisterRequest
 type RegisterResponse = common.RegisterResponse
+
+// Batch metrics types for offline sync
+type BatchMetricsMessage = common.BatchMetricsMessage
+type TimestampedMetrics = common.TimestampedMetrics
+type CommonAggregatedMetrics = common.AggregatedMetrics
+type BatchMetricsResponse = common.BatchMetricsResponse

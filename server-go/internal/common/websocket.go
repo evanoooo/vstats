@@ -24,6 +24,13 @@ type ServerResponse struct {
 	DownloadURL string             `json:"download_url,omitempty"`
 	Force       bool               `json:"force,omitempty"`
 	PingTargets []PingTargetConfig `json:"ping_targets,omitempty"`
+	// Batch metrics response fields
+	BatchID   string  `json:"batch_id,omitempty"`
+	Accepted  int     `json:"accepted,omitempty"`
+	Rejected  int     `json:"rejected,omitempty"`
+	LastSeen  *string `json:"last_seen,omitempty"` // Last timestamp server has seen for this server
+	// Resumable sync fields - last bucket for each granularity
+	LastBuckets map[string]int64 `json:"last_buckets,omitempty"` // granularity -> last bucket
 }
 
 // ============================================================================

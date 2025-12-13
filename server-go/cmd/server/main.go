@@ -84,8 +84,19 @@ func main() {
 	defer db.Close()
 
 	// Initialize the database writer for serialized writes
-	dbWriter = NewDBWriter(db, 1000) // Buffer up to 1000 write operations
+	// With batch buffers, only a few write jobs per second, so 100 is plenty
+	dbWriter = NewDBWriter(db, 100)
 	defer dbWriter.Close()
+
+	// Initialize metrics buffer for batched real-time metrics writes
+	// Flush every 1 second or when buffer reaches 1000 items
+	metricsBuffer = NewMetricsBuffer(1*time.Second, 1000)
+	defer metricsBuffer.Close()
+
+	// Initialize aggregation buffer for batched writes (flush every 1 second)
+	aggBuffer = NewAggBuffer(1 * time.Second)
+	defer aggBuffer.Close()
+	fmt.Println("📊 Batch write buffers initialized (flush every 1s, supports 3000+ agents)")
 
 	// Initialize history cache with 10 second TTL
 	InitHistoryCache(10 * time.Second)
@@ -133,9 +144,9 @@ func main() {
 	SetupSignalHandler(state)
 
 	// Start background tasks
-	go metricsBroadcastLoop(state)
-	go aggregation15MinLoop(db)
-	go aggregationLoop(state, db)
+	go snapshotRefreshLoop(state)  // Refresh dashboard snapshot every 5 seconds
+	go metricsBroadcastLoop(state) // Broadcast delta updates to connected dashboards
+	// NOTE: aggregation15MinLoop and aggregationLoop removed - aggregation now done on agent side
 	go cleanupLoop(db)
 
 	// Setup routes
@@ -464,42 +475,20 @@ func metricsBroadcastLoop(state *AppState) {
 	}
 }
 
-func aggregation15MinLoop(db *sql.DB) {
-	// Run every 15 minutes to aggregate raw data into 15-min buckets
-	ticker := time.NewTicker(15 * time.Minute)
+// NOTE: aggregation15MinLoop and aggregationLoop removed
+// Aggregation is now performed on the agent side and sent to server
+// This reduces server CPU load and allows agents to maintain their own historical data
+
+// snapshotRefreshLoop periodically refreshes the dashboard snapshot
+func snapshotRefreshLoop(state *AppState) {
+	// Initial snapshot
+	state.RefreshSnapshot()
+	
+	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
-	// Also run once at startup after a short delay to catch up
-	time.AfterFunc(30*time.Second, func() {
-		if err := Aggregate15Min(db); err != nil {
-			fmt.Printf("Failed to aggregate 15-min data (startup): %v\n", err)
-		}
-	})
-
 	for range ticker.C {
-		if err := Aggregate15Min(db); err != nil {
-			fmt.Printf("Failed to aggregate 15-min data: %v\n", err)
-		}
-	}
-}
-
-func aggregationLoop(state *AppState, db *sql.DB) {
-	ticker := time.NewTicker(1 * time.Hour)
-	defer ticker.Stop()
-
-	lastHour := time.Now().Hour()
-
-	for range ticker.C {
-		currentHour := time.Now().Hour()
-		if currentHour != lastHour {
-			lastHour = currentHour
-			if err := AggregateHourly(db); err != nil {
-				fmt.Printf("Failed to aggregate hourly data: %v\n", err)
-			}
-			if err := AggregateDaily(db); err != nil {
-				fmt.Printf("Failed to aggregate daily data: %v\n", err)
-			}
-		}
+		state.RefreshSnapshot()
 	}
 }
 

@@ -114,3 +114,123 @@ type PingTargetConfig struct {
 	Port int    `json:"port,omitempty"` // Port for TCP connections, default 80
 }
 
+// ============================================================================
+// Batch Metrics Types (for offline buffering and aggregation)
+// ============================================================================
+
+// AggregatedMetrics represents pre-aggregated metrics for efficient transmission
+type AggregatedMetrics struct {
+	StartTime   string `json:"start_time"`
+	EndTime     string `json:"end_time"`
+	SampleCount int    `json:"sample_count"`
+
+	// CPU
+	CPUAvg float32 `json:"cpu_avg"`
+	CPUMax float32 `json:"cpu_max"`
+
+	// Memory
+	MemoryAvg float32 `json:"memory_avg"`
+	MemoryMax float32 `json:"memory_max"`
+
+	// Disk
+	DiskAvg float32 `json:"disk_avg"`
+	DiskMax float32 `json:"disk_max"`
+
+	// Network - cumulative counters
+	NetRxMax uint64 `json:"net_rx_max"`
+	NetTxMax uint64 `json:"net_tx_max"`
+
+	// Load average
+	LoadOneAvg     float64 `json:"load_one_avg"`
+	LoadFiveAvg    float64 `json:"load_five_avg"`
+	LoadFifteenAvg float64 `json:"load_fifteen_avg"`
+
+	// Uptime
+	UptimeMax uint64 `json:"uptime_max"`
+
+	// Ping (optional)
+	PingAvg *float64 `json:"ping_avg,omitempty"`
+
+	// Last metrics snapshot for static data (hostname, OS info, etc.)
+	LastMetrics *SystemMetrics `json:"last_metrics,omitempty"`
+}
+
+// BatchMetricsMessage is sent by agent with multiple metrics (for offline sync)
+type BatchMetricsMessage struct {
+	Type       string               `json:"type"` // "batch_metrics"
+	BatchID    string               `json:"batch_id"`
+	Metrics    []TimestampedMetrics `json:"metrics,omitempty"`
+	Aggregated []*AggregatedMetrics `json:"aggregated,omitempty"`
+}
+
+// TimestampedMetrics wraps metrics with explicit timestamp for batch sending
+type TimestampedMetrics struct {
+	Timestamp string         `json:"timestamp"`
+	Metrics   *SystemMetrics `json:"metrics"`
+}
+
+// BatchMetricsResponse is the server response for batch metrics
+type BatchMetricsResponse struct {
+	Type     string  `json:"type"` // "batch_ack"
+	BatchID  string  `json:"batch_id"`
+	Accepted int     `json:"accepted"`
+	Rejected int     `json:"rejected"`
+	LastSeen *string `json:"last_seen,omitempty"` // Last timestamp server has seen
+	Error    string  `json:"error,omitempty"`
+}
+
+// ============================================================================
+// Multi-Granularity Aggregation Types (for agent-side aggregation)
+// ============================================================================
+
+// BucketData represents a single aggregated data bucket
+type BucketData struct {
+	Bucket      int64   `json:"bucket"`       // Unix timestamp / interval
+	CPUSum      float64 `json:"cpu_sum"`      // Sum of CPU usage for averaging
+	CPUMax      float64 `json:"cpu_max"`      // Max CPU usage
+	MemorySum   float64 `json:"memory_sum"`   // Sum of memory usage for averaging
+	MemoryMax   float64 `json:"memory_max"`   // Max memory usage
+	DiskSum     float64 `json:"disk_sum"`     // Sum of disk usage for averaging
+	NetRx       uint64  `json:"net_rx"`       // Max network RX (cumulative counter)
+	NetTx       uint64  `json:"net_tx"`       // Max network TX (cumulative counter)
+	PingSum     float64 `json:"ping_sum"`     // Sum of ping latency for averaging
+	PingCount   int     `json:"ping_count"`   // Number of ping samples
+	SampleCount int     `json:"sample_count"` // Number of samples in this bucket
+}
+
+// PingBucketData represents ping metrics for a specific target in a bucket
+type PingBucketData struct {
+	Bucket       int64   `json:"bucket"`        // Unix timestamp / interval
+	TargetName   string  `json:"target_name"`   // Ping target name
+	TargetHost   string  `json:"target_host"`   // Ping target host
+	LatencySum   float64 `json:"latency_sum"`   // Sum of latency for averaging
+	LatencyMax   float64 `json:"latency_max"`   // Max latency
+	LatencyCount int     `json:"latency_count"` // Number of latency samples
+	OkCount      int     `json:"ok_count"`      // Number of successful pings
+	FailCount    int     `json:"fail_count"`    // Number of failed pings
+}
+
+// GranularityData contains aggregated data for a specific time granularity
+type GranularityData struct {
+	Granularity string           `json:"granularity"` // "5sec", "2min", "15min", "hourly", "daily"
+	Interval    int              `json:"interval"`    // Bucket interval in seconds
+	Metrics     []BucketData     `json:"metrics"`     // Aggregated metrics buckets
+	Ping        []PingBucketData `json:"ping,omitempty"` // Aggregated ping buckets
+}
+
+// MultiGranularityMetrics contains aggregated data at multiple granularities
+type MultiGranularityMetrics struct {
+	Type          string            `json:"type"` // "aggregated_metrics"
+	Granularities []GranularityData `json:"granularities"`
+	LastMetrics   *SystemMetrics    `json:"last_metrics,omitempty"` // Latest raw metrics for real-time display
+}
+
+// Granularity constants (bucket intervals in seconds)
+const (
+	Granularity5Sec   = 5     // 1H view: 720 points
+	Granularity2Min   = 120   // 24H view: 720 points
+	Granularity15Min  = 900   // 7D view: 672 points
+	GranularityHourly = 3600  // 30D view: 720 points
+	GranularityDaily  = 86400 // 1Y view: 365 points
+)
+

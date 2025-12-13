@@ -316,6 +316,13 @@ type AgentMessage struct {
 	Token    string         `json:"token,omitempty"`
 	Version  string         `json:"version,omitempty"`
 	Metrics  *SystemMetrics `json:"metrics,omitempty"`
+	// Batch metrics fields
+	BatchID    string                       `json:"batch_id,omitempty"`
+	BatchItems []common.TimestampedMetrics  `json:"metrics_batch,omitempty"` // For batch raw metrics
+	Aggregated []*common.AggregatedMetrics  `json:"aggregated,omitempty"`    // For aggregated metrics
+	// Multi-granularity aggregated metrics (new)
+	Granularities []common.GranularityData `json:"granularities,omitempty"` // For multi-granularity data
+	LastMetrics   *SystemMetrics           `json:"last_metrics,omitempty"`  // Latest metrics snapshot
 }
 
 type AgentCommand struct {
@@ -347,6 +354,18 @@ type VersionInfo struct {
 }
 
 // ============================================================================
+// Dashboard Snapshot (pre-serialized for fast delivery)
+// ============================================================================
+
+// DashboardSnapshot holds pre-built data for new dashboard connections
+type DashboardSnapshot struct {
+	InitMessage   []byte                       // Pre-serialized StreamInitMessage
+	ServerMessages [][]byte                    // Pre-serialized StreamServerMessage for each server
+	EndMessage    []byte                       // Pre-serialized StreamEndMessage
+	LastUpdated   time.Time                    // When the snapshot was last updated
+}
+
+// ============================================================================
 // App State
 // ============================================================================
 
@@ -364,8 +383,9 @@ type AgentConnection struct {
 
 // DashboardClient represents a connected dashboard client with its IP
 type DashboardClient struct {
-	Conn *websocket.Conn
-	IP   string
+	Conn    *websocket.Conn
+	IP      string
+	WriteMu sync.Mutex // Protects concurrent writes to the connection
 }
 
 type AppState struct {
@@ -381,6 +401,9 @@ type AppState struct {
 	DashboardClients map[*websocket.Conn]*DashboardClient
 	DashboardMu      sync.RWMutex
 	DB               *sql.DB
+	// Pre-built snapshot for fast dashboard delivery
+	Snapshot         *DashboardSnapshot
+	SnapshotMu       sync.RWMutex
 }
 
 // GetOnlineUsersCount returns the number of unique IPs connected to the dashboard
