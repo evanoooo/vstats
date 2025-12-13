@@ -825,7 +825,7 @@ func GetHistorySince(db *sql.DB, serverID, rangeStr string, sinceBucket int64) (
 		}
 		rows, err = db.Query(`
 			SELECT 
-				datetime(bucket * 5, 'unixepoch') as timestamp,
+				strftime('%Y-%m-%dT%H:%M:%SZ', bucket * 5, 'unixepoch') as timestamp,
 				CASE WHEN sample_count > 0 THEN cpu_sum / sample_count ELSE 0 END as cpu_usage,
 				CASE WHEN sample_count > 0 THEN memory_sum / sample_count ELSE 0 END as memory_usage,
 				CASE WHEN sample_count > 0 THEN disk_sum / sample_count ELSE 0 END as disk_usage,
@@ -846,7 +846,7 @@ func GetHistorySince(db *sql.DB, serverID, rangeStr string, sinceBucket int64) (
 		}
 		rows, err = db.Query(`
 			SELECT 
-				datetime(bucket * 120, 'unixepoch') as timestamp,
+				strftime('%Y-%m-%dT%H:%M:%SZ', bucket * 120, 'unixepoch') as timestamp,
 				CASE WHEN sample_count > 0 THEN cpu_sum / sample_count ELSE 0 END as cpu_usage,
 				CASE WHEN sample_count > 0 THEN memory_sum / sample_count ELSE 0 END as memory_usage,
 				CASE WHEN sample_count > 0 THEN disk_sum / sample_count ELSE 0 END as disk_usage,
@@ -878,7 +878,7 @@ func GetHistorySince(db *sql.DB, serverID, rangeStr string, sinceBucket int64) (
 			// Fall back to real-time aggregation from raw data (15-min buckets = 900 seconds)
 			rows, err = db.Query(`
 				SELECT 
-					datetime((strftime('%s', timestamp) / 900) * 900, 'unixepoch') as bucket_start,
+					strftime('%Y-%m-%dT%H:%M:%SZ', (strftime('%s', timestamp) / 900) * 900, 'unixepoch') as bucket_start,
 					AVG(cpu_usage) as cpu_avg,
 					AVG(memory_usage) as memory_avg,
 					AVG(disk_usage) as disk_avg,
@@ -996,7 +996,7 @@ func GetHistorySince(db *sql.DB, serverID, rangeStr string, sinceBucket int64) (
 		}
 		rows, err = db.Query(`
 			SELECT 
-				datetime(bucket * 120, 'unixepoch') as timestamp,
+				strftime('%Y-%m-%dT%H:%M:%SZ', bucket * 120, 'unixepoch') as timestamp,
 				CASE WHEN sample_count > 0 THEN cpu_sum / sample_count ELSE 0 END as cpu_usage,
 				CASE WHEN sample_count > 0 THEN memory_sum / sample_count ELSE 0 END as memory_usage,
 				CASE WHEN sample_count > 0 THEN disk_sum / sample_count ELSE 0 END as disk_usage,
@@ -1056,7 +1056,7 @@ func GetPingHistorySince(db *sql.DB, serverID, rangeStr string, sinceBucket int6
 			SELECT 
 				target_name,
 				target_host,
-				datetime(bucket * 5, 'unixepoch') as timestamp,
+				strftime('%Y-%m-%dT%H:%M:%SZ', bucket * 5, 'unixepoch') as timestamp,
 				CASE WHEN latency_count > 0 THEN latency_sum / latency_count ELSE NULL END as latency_ms,
 				CASE WHEN fail_count > 0 THEN 'error' ELSE 'ok' END as status
 			FROM ping_5sec 
@@ -1073,7 +1073,7 @@ func GetPingHistorySince(db *sql.DB, serverID, rangeStr string, sinceBucket int6
 			SELECT 
 				target_name,
 				target_host,
-				datetime(bucket * 120, 'unixepoch') as timestamp,
+				strftime('%Y-%m-%dT%H:%M:%SZ', bucket * 120, 'unixepoch') as timestamp,
 				CASE WHEN latency_count > 0 THEN latency_sum / latency_count ELSE NULL END as latency_ms,
 				CASE WHEN fail_count > 0 THEN 'error' ELSE 'ok' END as status
 			FROM ping_2min 
@@ -1105,7 +1105,7 @@ func GetPingHistorySince(db *sql.DB, serverID, rangeStr string, sinceBucket int6
 				SELECT 
 					target_name,
 					target_host,
-					datetime((strftime('%s', timestamp) / 900) * 900, 'unixepoch') as bucket_start,
+					strftime('%Y-%m-%dT%H:%M:%SZ', (strftime('%s', timestamp) / 900) * 900, 'unixepoch') as bucket_start,
 					AVG(latency_ms) as latency_ms,
 					MIN(status) as status
 				FROM ping_raw 
@@ -1213,7 +1213,7 @@ func GetPingHistorySince(db *sql.DB, serverID, rangeStr string, sinceBucket int6
 			SELECT 
 				target_name,
 				target_host,
-				datetime(bucket * 120, 'unixepoch') as timestamp,
+				strftime('%Y-%m-%dT%H:%M:%SZ', bucket * 120, 'unixepoch') as timestamp,
 				CASE WHEN latency_count > 0 THEN latency_sum / latency_count ELSE NULL END as latency_ms,
 				CASE WHEN fail_count > 0 THEN 'error' ELSE 'ok' END as status
 			FROM ping_2min 
