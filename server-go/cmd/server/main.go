@@ -87,6 +87,9 @@ func main() {
 	dbWriter = NewDBWriter(db, 1000) // Buffer up to 1000 write operations
 	defer dbWriter.Close()
 
+	// Initialize history cache with 10 second TTL
+	InitHistoryCache(10 * time.Second)
+
 	fmt.Printf("📦 Database initialized: %s\n", GetDBPath())
 	fmt.Printf("⚙️  Config file: %s\n", GetConfigPath())
 

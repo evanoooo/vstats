@@ -2,7 +2,9 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -85,23 +87,83 @@ func (s *AppState) GetHistory(c *gin.Context, db *sql.DB) {
 	serverID := c.Param("server_id")
 	rangeStr := c.DefaultQuery("range", "24h")
 	dataType := c.DefaultQuery("type", "all") // "ping", "metrics", or "all"
+	sinceStr := c.Query("since")              // Bucket number for incremental updates
 
-	var data []HistoryPoint
-	var pingTargets []PingHistoryTarget
-	var err error
+	var sinceBucket int64
+	if sinceStr != "" {
+		fmt.Sscanf(sinceStr, "%d", &sinceBucket)
+	}
 
-	// Fetch metrics data only if requested
-	if dataType == "metrics" || dataType == "all" {
-		data, err = GetHistory(db, serverID, rangeStr)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch history"})
+	// Only use cache for 1h and 24h ranges with type=all
+	useCache := (rangeStr == "1h" || rangeStr == "24h" || rangeStr == "") && dataType == "all" && historyCache != nil
+
+	// Check cache first (for full queries only, not incremental)
+	if useCache && sinceBucket == 0 {
+		if cached, ok := historyCache.Get(serverID, rangeStr); ok {
+			c.JSON(http.StatusOK, HistoryResponse{
+				ServerID:    serverID,
+				Range:       rangeStr,
+				Data:        cached.Data,
+				PingTargets: cached.PingTargets,
+				LastBucket:  cached.LastBucket,
+			})
 			return
 		}
 	}
 
-	// Fetch ping data only if requested
-	if dataType == "ping" || dataType == "all" {
-		pingTargets, _ = GetPingHistory(db, serverID, rangeStr)
+	var data []HistoryPoint
+	var pingTargets []PingHistoryTarget
+	var metricsErr, pingErr error
+	var lastBucket int64
+
+	if dataType == "all" {
+		// Run both queries in parallel for better performance
+		var wg sync.WaitGroup
+		wg.Add(2)
+
+		go func() {
+			defer wg.Done()
+			data, metricsErr = GetHistorySince(db, serverID, rangeStr, sinceBucket)
+		}()
+
+		go func() {
+			defer wg.Done()
+			pingTargets, pingErr = GetPingHistorySince(db, serverID, rangeStr, sinceBucket)
+		}()
+
+		wg.Wait()
+
+		if metricsErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch history"})
+			return
+		}
+		// Ignore ping errors, just return empty if failed
+		_ = pingErr
+	} else if dataType == "metrics" {
+		data, metricsErr = GetHistorySince(db, serverID, rangeStr, sinceBucket)
+		if metricsErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch history"})
+			return
+		}
+	} else if dataType == "ping" {
+		pingTargets, _ = GetPingHistorySince(db, serverID, rangeStr, sinceBucket)
+	}
+
+	// Calculate last bucket from the data
+	now := time.Now().UTC()
+	switch rangeStr {
+	case "1h":
+		lastBucket = now.Unix() / 5
+	case "24h", "":
+		lastBucket = now.Unix() / 120
+	}
+
+	// Update cache for full queries
+	if useCache && sinceBucket == 0 {
+		historyCache.Set(serverID, rangeStr, data, pingTargets, lastBucket)
+	} else if useCache && sinceBucket > 0 {
+		// Update cache with new data for incremental queries
+		historyCache.Update(serverID, rangeStr, data, pingTargets, lastBucket)
 	}
 
 	c.JSON(http.StatusOK, HistoryResponse{
@@ -109,6 +171,8 @@ func (s *AppState) GetHistory(c *gin.Context, db *sql.DB) {
 		Range:       rangeStr,
 		Data:        data,
 		PingTargets: pingTargets,
+		LastBucket:  lastBucket,
+		Incremental: sinceBucket > 0,
 	})
 }
 

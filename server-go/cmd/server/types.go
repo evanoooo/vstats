@@ -188,6 +188,8 @@ type HistoryResponse struct {
 	Range       string              `json:"range"`
 	Data        []HistoryPoint      `json:"data"`
 	PingTargets []PingHistoryTarget `json:"ping_targets,omitempty"`
+	LastBucket  int64               `json:"last_bucket,omitempty"`  // For incremental updates
+	Incremental bool                `json:"incremental,omitempty"` // True if this is an incremental response
 }
 
 type PingHistoryTarget struct {
