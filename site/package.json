@@ -13,7 +13,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@headlessui/react": "^1.7.18",
+    "@headlessui/react": "^2.2.9",
     "clsx": "^2.1.0",
     "framer-motion": "^12.23.26",
     "i18next": "^23.16.8",
