@@ -4,7 +4,7 @@
 # This Dockerfile is used in CI to create images
 # from pre-built binaries
 
-FROM alpine:3.19
+FROM alpine:3.23
 
 RUN apk add --no-cache ca-certificates tzdata wget
 
