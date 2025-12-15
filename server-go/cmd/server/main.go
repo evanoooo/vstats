@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	_ "net/http/pprof" // Enable pprof
 	"os"
 	"path/filepath"
 	"strings"
@@ -143,11 +145,56 @@ func main() {
 	// Setup signal handler for config reload (SIGHUP)
 	SetupSignalHandler(state)
 
+	// Start pprof server for profiling (only in dev or when VSTATS_PPROF is set)
+	if os.Getenv("VSTATS_PPROF") != "" {
+		pprofAddr := os.Getenv("VSTATS_PPROF")
+		if pprofAddr == "1" || pprofAddr == "true" {
+			pprofAddr = ":6060"
+		}
+		go func() {
+			fmt.Printf("🔬 pprof server listening on %s\n", pprofAddr)
+			if err := http.ListenAndServe(pprofAddr, nil); err != nil {
+				fmt.Printf("⚠️  pprof server error: %v\n", err)
+			}
+		}()
+	}
+
+	// Check version on startup
+	CheckVersionOnStartup()
+
 	// Start background tasks
-	go snapshotRefreshLoop(state)  // Refresh dashboard snapshot every 5 seconds
-	go metricsBroadcastLoop(state) // Broadcast delta updates to connected dashboards
+	go metricsBroadcastLoop(state) // Combined: refresh snapshot + broadcast delta updates
 	// NOTE: aggregation15MinLoop and aggregationLoop removed - aggregation now done on agent side
 	go cleanupLoop(db)
+	go StartVersionCheckLoop(state) // Check for version updates periodically
+
+	// Start traffic manager
+	trafficManager = NewTrafficManager(state, db)
+	trafficManager.Start()
+	defer trafficManager.Stop()
+
+	// Start alert engine if enabled
+	alertEngine = NewAlertEngine(state, db)
+	alertEngine.Start()
+	defer alertEngine.Stop()
+
+	// Initialize GeoIP service
+	geoipService := GetGeoIPService()
+	if err := geoipService.Initialize(config.GeoIPConfig); err != nil {
+		fmt.Printf("⚠️ GeoIP initialization warning: %v\n", err)
+	} else {
+		if geoipService.IsMMDBLoaded() {
+			fmt.Println("🌍 GeoIP service initialized with MMDB database")
+		} else {
+			fmt.Println("🌍 GeoIP service initialized (API fallback mode)")
+		}
+	}
+	defer geoipService.Close()
+
+	// Start GeoIP auto-update if enabled
+	if config.GeoIPConfig != nil && config.GeoIPConfig.AutoUpdate {
+		go geoIPAutoUpdateLoop(state)
+	}
 
 	// Setup routes
 	gin.SetMode(gin.ReleaseMode)
@@ -193,12 +240,19 @@ func main() {
 	r.GET("/api/auth/verify", AuthMiddleware(), state.VerifyToken)
 
 	// OAuth 2.0 routes (public)
-	r.GET("/api/auth/oauth/providers", state.GetOAuthProviders)
+	r.GET("/api/auth/oauth/providers", state.GetOAuthProvidersExtended) // Extended version with OIDC/CF support
 	r.GET("/api/auth/oauth/github", state.GitHubOAuthStart)
 	r.GET("/api/auth/oauth/github/callback", state.GitHubOAuthCallback)
 	r.GET("/api/auth/oauth/google", state.GoogleOAuthStart)
 	r.GET("/api/auth/oauth/google/callback", state.GoogleOAuthCallback)
 	r.GET("/api/auth/oauth/proxy/callback", state.ProxyOAuthCallback) // Centralized OAuth callback
+	// OIDC routes
+	r.GET("/api/auth/oauth/oidc/providers", state.GetOIDCProviders)
+	r.GET("/api/auth/oauth/oidc/:provider_id", state.OIDCOAuthStart)
+	r.GET("/api/auth/oauth/oidc/:provider_id/callback", state.OIDCOAuthCallback)
+	// Cloudflare Access routes
+	r.GET("/api/auth/oauth/cloudflare", state.CloudflareAccessStart)
+	r.GET("/api/auth/oauth/cloudflare/callback", state.CloudflareAccessCallback)
 	r.GET("/api/install-command", AuthMiddleware(), state.GetInstallCommand)
 	r.GET("/api/version", GetServerVersion)
 	r.GET("/version", GetServerVersion)
@@ -229,6 +283,10 @@ func main() {
 		// OAuth settings (admin only)
 		protected.GET("/api/settings/oauth", state.GetOAuthSettings)
 		protected.PUT("/api/settings/oauth", state.UpdateOAuthSettings)
+		// SSO binding management (admin only)
+		protected.GET("/api/sso/bindings", state.GetSSOBindings)
+		protected.POST("/api/sso/bindings", state.AddSSOBinding)
+		protected.DELETE("/api/sso/bindings/:provider", state.DeleteSSOBinding)
 		// Group management (GET is public, mutations are protected)
 		protected.POST("/api/groups", state.AddGroup)
 		protected.PUT("/api/groups/:id", state.UpdateGroup)
@@ -241,6 +299,54 @@ func main() {
 		protected.POST("/api/dimensions/:id/options", state.AddOption)
 		protected.PUT("/api/dimensions/:id/options/:option_id", state.UpdateOption)
 		protected.DELETE("/api/dimensions/:id/options/:option_id", state.DeleteOption)
+		// Alert settings and management (admin only)
+		protected.GET("/api/settings/alerts", state.GetAlertConfig)
+		protected.PUT("/api/settings/alerts", state.UpdateAlertConfig)
+		protected.GET("/api/alerts/channels", state.GetChannels)
+		protected.POST("/api/alerts/channels", state.AddChannel)
+		protected.PUT("/api/alerts/channels/:id", state.UpdateChannel)
+		protected.DELETE("/api/alerts/channels/:id", state.DeleteChannel)
+		protected.POST("/api/alerts/channels/test", state.TestChannel)
+		protected.GET("/api/alerts", state.GetAlerts)
+		protected.GET("/api/alerts/history", state.GetAlertHistory)
+		protected.POST("/api/alerts/:id/mute", state.MuteAlert)
+		protected.PUT("/api/alerts/rules/offline", state.UpdateOfflineRule)
+		protected.PUT("/api/alerts/rules/load", state.UpdateLoadRule)
+		protected.PUT("/api/alerts/rules/traffic", state.UpdateTrafficRule)
+		protected.GET("/api/alerts/templates", state.GetAlertTemplates)
+		protected.PUT("/api/alerts/templates/:key", state.UpdateAlertTemplate)
+		// Audit log management
+		protected.GET("/api/audit-logs", state.GetAuditLogs)
+		protected.GET("/api/audit-logs/export", state.ExportAuditLogs)
+		protected.GET("/api/audit-logs/stats", state.GetAuditLogStats)
+		protected.GET("/api/settings/audit-log", state.GetAuditLogSettings)
+		protected.PUT("/api/settings/audit-log", state.UpdateAuditLogSettings)
+		// GeoIP management
+		protected.GET("/api/settings/geoip", state.GetGeoIPConfig)
+		protected.PUT("/api/settings/geoip", state.UpdateGeoIPConfig)
+		protected.GET("/api/geoip/lookup", state.LookupGeoIP)
+		protected.POST("/api/geoip/lookup/batch", state.LookupGeoIPBatch)
+		protected.POST("/api/geoip/refresh", state.RefreshServerGeoIP)
+		protected.POST("/api/geoip/cache/clear", state.ClearGeoIPCache)
+		protected.GET("/api/servers/:id/geoip", state.GetServerGeoIP)
+		// Asset management
+		protected.GET("/api/assets/cost-statistics", state.GetCostStatistics)
+		protected.GET("/api/assets/expiring", state.GetExpiringServers)
+		protected.POST("/api/servers/import", state.ImportServers)
+		protected.POST("/api/servers/import/csv", state.ImportServersCSV)
+		protected.GET("/api/servers/export", state.ExportServers)
+		protected.PUT("/api/alerts/rules/expiry", state.UpdateExpiryRule)
+		// Traffic management
+		protected.GET("/api/traffic/summary", state.GetTrafficSummary)
+		protected.GET("/api/traffic/stats", state.GetTrafficStats)
+		protected.GET("/api/traffic/stats/:server_id", state.GetServerTrafficStats)
+		protected.PUT("/api/traffic/limit", state.UpdateTrafficLimit)
+		protected.POST("/api/traffic/reset", state.ResetServerTraffic)
+		protected.GET("/api/traffic/history/:server_id", state.GetTrafficHistory)
+		protected.GET("/api/traffic/daily/:server_id", state.GetTrafficDaily)
+		protected.GET("/api/traffic/limits", state.GetAllTrafficLimits)
+		protected.PUT("/api/traffic/limits/batch", state.BatchUpdateTrafficLimits)
+		protected.DELETE("/api/traffic/limits/:server_id", state.DeleteTrafficLimit)
 	}
 
 	// Static file serving
@@ -347,10 +453,14 @@ func boolToStr(b bool) string {
 }
 
 func metricsBroadcastLoop(state *AppState) {
+	// Build initial snapshot
+	state.RefreshSnapshot()
+
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
+		// Single data collection for both snapshot and broadcast
 		state.ConfigMu.RLock()
 		config := state.Config
 		state.ConfigMu.RUnlock()
@@ -362,10 +472,10 @@ func metricsBroadcastLoop(state *AppState) {
 		}
 		state.AgentMetricsMu.RUnlock()
 
-		// Collect local metrics
+		// Collect local metrics ONCE
 		localMetrics := CollectMetrics()
 
-		// Build compact delta updates
+		// === Build delta updates for connected dashboards ===
 		var deltaUpdates []CompactServerUpdate
 
 		// Check local server
@@ -472,25 +582,15 @@ func metricsBroadcastLoop(state *AppState) {
 				state.BroadcastMetrics(string(data))
 			}
 		}
+
+		// === Refresh snapshot using already collected data ===
+		state.RefreshSnapshotWithData(config, agentMetrics, &localMetrics)
 	}
 }
 
 // NOTE: aggregation15MinLoop and aggregationLoop removed
 // Aggregation is now performed on the agent side and sent to server
 // This reduces server CPU load and allows agents to maintain their own historical data
-
-// snapshotRefreshLoop periodically refreshes the dashboard snapshot
-func snapshotRefreshLoop(state *AppState) {
-	// Initial snapshot
-	state.RefreshSnapshot()
-	
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		state.RefreshSnapshot()
-	}
-}
 
 func cleanupLoop(db *sql.DB) {
 	ticker := time.NewTicker(1 * time.Hour)
@@ -500,6 +600,86 @@ func cleanupLoop(db *sql.DB) {
 		if err := CleanupOldData(db); err != nil {
 			fmt.Printf("Failed to cleanup old data: %v\n", err)
 		}
+		// Cleanup old audit logs (default 30 days retention)
+		if err := CleanupAuditLogs(db, 30); err != nil {
+			fmt.Printf("Failed to cleanup audit logs: %v\n", err)
+		}
+	}
+}
+
+// geoIPAutoUpdateLoop periodically updates GeoIP data for all servers
+func geoIPAutoUpdateLoop(state *AppState) {
+	// Initial delay to let server start up
+	time.Sleep(30 * time.Second)
+
+	// Determine update interval
+	intervalHr := 24
+	state.ConfigMu.RLock()
+	if state.Config.GeoIPConfig != nil && state.Config.GeoIPConfig.UpdateIntervalHr > 0 {
+		intervalHr = state.Config.GeoIPConfig.UpdateIntervalHr
+	}
+	state.ConfigMu.RUnlock()
+
+	ticker := time.NewTicker(time.Duration(intervalHr) * time.Hour)
+	defer ticker.Stop()
+
+	// Do initial update
+	updateServerGeoIP(state)
+
+	for range ticker.C {
+		// Check if auto-update is still enabled
+		state.ConfigMu.RLock()
+		enabled := state.Config.GeoIPConfig != nil && state.Config.GeoIPConfig.AutoUpdate
+		state.ConfigMu.RUnlock()
+
+		if !enabled {
+			return
+		}
+
+		updateServerGeoIP(state)
+	}
+}
+
+// updateServerGeoIP updates GeoIP data for all servers
+func updateServerGeoIP(state *AppState) {
+	service := GetGeoIPService()
+
+	state.ConfigMu.Lock()
+	defer state.ConfigMu.Unlock()
+
+	updated := 0
+	for i := range state.Config.Servers {
+		server := &state.Config.Servers[i]
+		if server.IP == "" {
+			continue
+		}
+
+		result, err := service.Lookup(server.IP)
+		if err != nil {
+			continue
+		}
+
+		if result.CountryCode != "" {
+			server.Location = result.CountryCode
+			server.GeoIP = &ServerGeoIP{
+				CountryCode: result.CountryCode,
+				CountryName: result.CountryName,
+				City:        result.City,
+				Region:      result.Region,
+				Latitude:    result.Latitude,
+				Longitude:   result.Longitude,
+				UpdatedAt:   time.Now().Format(time.RFC3339),
+			}
+			updated++
+		}
+	}
+
+	if updated > 0 {
+		if state.Config.GeoIPConfig != nil {
+			state.Config.GeoIPConfig.LastUpdate = time.Now().Format(time.RFC3339)
+		}
+		SaveConfig(state.Config)
+		fmt.Printf("🌍 GeoIP auto-update: updated %d servers\n", updated)
 	}
 }
 

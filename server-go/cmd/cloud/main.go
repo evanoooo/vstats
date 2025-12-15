@@ -63,6 +63,9 @@ func main() {
 	websocket.InitHub()
 	fmt.Println("   ✓ WebSocket hub ready")
 
+	// Set version for handlers
+	handlers.Version = Version
+
 	// Setup Gin
 	if cfg.IsProduction() {
 		gin.SetMode(gin.ReleaseMode)
@@ -80,7 +83,7 @@ func main() {
 	// Health check
 	r.GET("/health", handlers.HealthCheck)
 	r.GET("/health/detailed", handlers.HealthCheckDetailed)
-	r.GET("/version", handlers.Version)
+	r.GET("/version", handlers.VersionHandler)
 
 	// Release/Download endpoints (for install scripts)
 	r.GET("/api/release/latest", handlers.GetLatestVersion)

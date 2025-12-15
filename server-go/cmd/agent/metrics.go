@@ -159,6 +159,9 @@ func (mc *MetricsCollector) Collect() SystemMetrics {
 		pingPtr = ping
 	}
 
+	// GPU metrics
+	gpuMetrics := collectGPUMetrics()
+
 	metrics := SystemMetrics{
 		Timestamp: time.Now().UTC(),
 		Hostname:  hostInfo.Hostname,
@@ -197,6 +200,7 @@ func (mc *MetricsCollector) Collect() SystemMetrics {
 		Uptime:      uptime,
 		LoadAverage: la,
 		Ping:        pingPtr,
+		GPU:         gpuMetrics,
 		Version:     AgentVersion,
 	}
 

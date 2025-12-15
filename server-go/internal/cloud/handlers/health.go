@@ -11,6 +11,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Version is set by main.go at startup
+var Version = "dev"
+
 // HealthCheck returns server health status
 func HealthCheck(c *gin.Context) {
 	c.String(http.StatusOK, "OK")
@@ -49,10 +52,10 @@ func HealthCheckDetailed(c *gin.Context) {
 	}
 }
 
-// Version returns API version info
-func Version(c *gin.Context) {
+// VersionHandler returns API version info
+func VersionHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"version": "1.0.0",
+		"version": Version,
 		"name":    "vstats-cloud",
 	})
 }

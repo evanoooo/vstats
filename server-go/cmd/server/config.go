@@ -8,9 +8,10 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
-	"vstats/internal/common"
 	"golang.org/x/crypto/bcrypt"
+	"vstats/internal/common"
 )
 
 const (
@@ -32,8 +33,12 @@ type LocalNodeConfig struct {
 	GroupValues  map[string]string `json:"group_values,omitempty"` // dimension_id -> option_id
 	PriceAmount  string            `json:"price_amount,omitempty"`
 	PricePeriod  string            `json:"price_period,omitempty"`
+	PriceCurrency string           `json:"price_currency,omitempty"` // Currency code: USD, CNY, EUR, etc.
 	PurchaseDate string            `json:"purchase_date,omitempty"`
+	ExpiryDate   string            `json:"expiry_date,omitempty"`    // When the service expires
+	AutoRenew    bool              `json:"auto_renew,omitempty"`     // Whether auto-renewal is enabled
 	TipBadge     string            `json:"tip_badge,omitempty"`
+	Notes        string            `json:"notes,omitempty"`          // Additional notes
 }
 
 // BackgroundConfig represents background settings for the site theme
@@ -77,6 +82,35 @@ type OAuthProvider struct {
 	AllowedUsers []string `json:"allowed_users,omitempty"` // GitHub usernames or Google emails
 }
 
+// OIDCProvider represents a generic OpenID Connect provider configuration
+type OIDCProvider struct {
+	Enabled       bool     `json:"enabled"`
+	Name          string   `json:"name"`                     // Display name (e.g., "Authentik", "Keycloak")
+	Issuer        string   `json:"issuer"`                   // OIDC issuer URL (e.g., https://auth.example.com)
+	ClientID      string   `json:"client_id"`
+	ClientSecret  string   `json:"client_secret"`
+	Scopes        []string `json:"scopes,omitempty"`         // Default: openid, email, profile
+	AllowedUsers  []string `json:"allowed_users,omitempty"`  // Email addresses or subject IDs
+	AllowedGroups []string `json:"allowed_groups,omitempty"` // Group names from OIDC claims
+	UsernameClaim string   `json:"username_claim,omitempty"` // Claim to use as username (default: email)
+}
+
+// CloudflareAccessConfig represents Cloudflare Access (Zero Trust) configuration
+type CloudflareAccessConfig struct {
+	Enabled      bool     `json:"enabled"`
+	TeamDomain   string   `json:"team_domain"`              // Your Cloudflare Access team domain (e.g., mycompany.cloudflareaccess.com)
+	AUD          string   `json:"aud"`                      // Application Audience (AUD) tag from Cloudflare Access
+	AllowedUsers []string `json:"allowed_users,omitempty"`  // Email addresses allowed to access
+}
+
+// SSOBinding represents a linked SSO identity to the admin account
+type SSOBinding struct {
+	Provider   string `json:"provider"`    // e.g., "github", "google", "oidc", "cloudflare"
+	ProviderID string `json:"provider_id"` // Provider's unique identifier for OIDC
+	Identifier string `json:"identifier"`  // Username/email from the provider
+	BoundAt    string `json:"bound_at"`    // ISO timestamp when bound
+}
+
 type OAuthConfig struct {
 	// Use centralized OAuth proxy (vstats.zsoft.cc)
 	// When enabled, no need to configure individual OAuth apps
@@ -88,6 +122,15 @@ type OAuthConfig struct {
 	// Self-hosted OAuth configuration (optional, for advanced users)
 	GitHub *OAuthProvider `json:"github,omitempty"`
 	Google *OAuthProvider `json:"google,omitempty"`
+
+	// Generic OIDC Providers (support multiple OIDC providers)
+	OIDC []*OIDCProvider `json:"oidc,omitempty"`
+
+	// Cloudflare Access (Zero Trust) configuration
+	CloudflareAccess *CloudflareAccessConfig `json:"cloudflare_access,omitempty"`
+
+	// SSO Bindings - linked SSO identities to admin account
+	Bindings []SSOBinding `json:"bindings,omitempty"`
 }
 
 // GroupDimension represents a grouping dimension (e.g., Region, Purpose)
@@ -114,6 +157,17 @@ type ServerGroup struct {
 	SortOrder int    `json:"sort_order"`
 }
 
+// ServerGeoIP holds GeoIP data for a server
+type ServerGeoIP struct {
+	CountryCode string  `json:"country_code"`
+	CountryName string  `json:"country_name"`
+	City        string  `json:"city,omitempty"`
+	Region      string  `json:"region,omitempty"`
+	Latitude    float64 `json:"latitude,omitempty"`
+	Longitude   float64 `json:"longitude,omitempty"`
+	UpdatedAt   string  `json:"updated_at,omitempty"`
+}
+
 type RemoteServer struct {
 	ID           string            `json:"id"`
 	Name         string            `json:"name"`
@@ -128,21 +182,29 @@ type RemoteServer struct {
 	GroupValues  map[string]string `json:"group_values,omitempty"` // dimension_id -> option_id
 	PriceAmount  string            `json:"price_amount,omitempty"`
 	PricePeriod  string            `json:"price_period,omitempty"`
+	PriceCurrency string           `json:"price_currency,omitempty"` // Currency code: USD, CNY, EUR, etc.
 	PurchaseDate string            `json:"purchase_date,omitempty"`
+	ExpiryDate   string            `json:"expiry_date,omitempty"`    // When the service expires
+	AutoRenew    bool              `json:"auto_renew,omitempty"`     // Whether auto-renewal is enabled
 	TipBadge     string            `json:"tip_badge,omitempty"`
+	Notes        string            `json:"notes,omitempty"`          // Additional notes
+	GeoIP        *ServerGeoIP      `json:"geoip,omitempty"`
 }
 
 type AppConfig struct {
-	AdminPasswordHash string           `json:"admin_password_hash"`
-	JWTSecret         string           `json:"jwt_secret"`
-	Port              string           `json:"port,omitempty"`
-	Servers           []RemoteServer   `json:"servers"`
-	Groups            []ServerGroup    `json:"groups,omitempty"` // Deprecated, for backward compatibility
-	GroupDimensions   []GroupDimension `json:"group_dimensions,omitempty"`
-	SiteSettings      SiteSettings     `json:"site_settings"`
-	LocalNode         LocalNodeConfig  `json:"local_node"`
-	ProbeSettings     ProbeSettings    `json:"probe_settings"`
-	OAuth             *OAuthConfig     `json:"oauth,omitempty"`
+	AdminPasswordHash string            `json:"admin_password_hash"`
+	JWTSecret         string            `json:"jwt_secret"`
+	Port              string            `json:"port,omitempty"`
+	Servers           []RemoteServer    `json:"servers"`
+	Groups            []ServerGroup     `json:"groups,omitempty"` // Deprecated, for backward compatibility
+	GroupDimensions   []GroupDimension  `json:"group_dimensions,omitempty"`
+	SiteSettings      SiteSettings      `json:"site_settings"`
+	LocalNode         LocalNodeConfig   `json:"local_node"`
+	ProbeSettings     ProbeSettings     `json:"probe_settings"`
+	OAuth             *OAuthConfig      `json:"oauth,omitempty"`
+	AlertConfig       *AlertConfig      `json:"alert_config,omitempty"`
+	AuditLogSettings  *AuditLogSettings `json:"audit_log_settings,omitempty"`
+	GeoIPConfig       *GeoIPConfig      `json:"geoip_config,omitempty"`
 }
 
 func getExeDir() string {
@@ -270,7 +332,7 @@ func LoadConfig() (*AppConfig, *string) {
 		if err != nil {
 			fmt.Printf("⚠️  Failed to read config: %v, using defaults\n", err)
 			config, password := NewAppConfigWithRandomPassword()
-			SaveConfig(config)
+			saveConfigNow(config) // Immediate save for initialization
 			InitJWTSecret(config.JWTSecret)
 			return config, &password
 		}
@@ -279,7 +341,7 @@ func LoadConfig() (*AppConfig, *string) {
 		if err := json.Unmarshal(data, &config); err != nil {
 			fmt.Printf("⚠️  Failed to parse config: %v, using defaults\n", err)
 			newConfig, password := NewAppConfigWithRandomPassword()
-			SaveConfig(newConfig)
+			saveConfigNow(newConfig) // Immediate save for initialization
 			InitJWTSecret(newConfig.JWTSecret)
 			return newConfig, &password
 		}
@@ -290,7 +352,7 @@ func LoadConfig() (*AppConfig, *string) {
 			password := GenerateRandomString(16)
 			hash, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 			config.AdminPasswordHash = string(hash)
-			SaveConfig(&config)
+			saveConfigNow(&config) // Immediate save for password
 			fmt.Printf("🔑 New password: %s\n", password)
 		} else {
 			fmt.Printf("✅ Password hash loaded (%d chars)\n", len(config.AdminPasswordHash))
@@ -299,13 +361,13 @@ func LoadConfig() (*AppConfig, *string) {
 		// Ensure jwt_secret exists
 		if config.JWTSecret == "" {
 			config.JWTSecret = GenerateRandomString(64)
-			SaveConfig(&config)
+			saveConfigNow(&config) // Immediate save for JWT secret
 		}
 
 		// Initialize default group dimensions if not present
 		if len(config.GroupDimensions) == 0 {
 			config.GroupDimensions = GetDefaultGroupDimensions()
-			SaveConfig(&config)
+			saveConfigNow(&config) // Immediate save for defaults
 			fmt.Println("✅ Initialized default group dimensions")
 		}
 
@@ -315,7 +377,7 @@ func LoadConfig() (*AppConfig, *string) {
 
 	// First run - generate random password
 	config, password := NewAppConfigWithRandomPassword()
-	SaveConfig(config)
+	saveConfigNow(config) // Immediate save for initialization
 	InitJWTSecret(config.JWTSecret)
 	return config, &password
 }
@@ -345,7 +407,7 @@ func ResetAdminPassword() string {
 		config.JWTSecret = GenerateRandomString(64)
 	}
 
-	SaveConfig(config)
+	saveConfigNow(config) // Immediate save for password reset
 
 	// Re-initialize JWT secret in case server is running
 	InitJWTSecret(config.JWTSecret)
@@ -353,7 +415,61 @@ func ResetAdminPassword() string {
 	return password
 }
 
+// Config save debouncing - prevents excessive disk I/O
+var (
+	configDirty     bool
+	configDirtyMu   sync.Mutex
+	configSaveTimer *time.Timer
+	pendingConfig   *AppConfig
+)
+
+const configSaveDelay = 5 * time.Second // Batch saves within 5 seconds
+
+// SaveConfig marks config as dirty and schedules a debounced save
 func SaveConfig(config *AppConfig) {
+	configDirtyMu.Lock()
+	defer configDirtyMu.Unlock()
+
+	pendingConfig = config
+	configDirty = true
+
+	// If timer already running, it will save the latest config
+	if configSaveTimer != nil {
+		return
+	}
+
+	// Schedule save after delay
+	configSaveTimer = time.AfterFunc(configSaveDelay, func() {
+		configDirtyMu.Lock()
+		if !configDirty || pendingConfig == nil {
+			configDirtyMu.Unlock()
+			return
+		}
+		cfg := pendingConfig
+		configDirty = false
+		configSaveTimer = nil
+		configDirtyMu.Unlock()
+
+		saveConfigNow(cfg)
+	})
+}
+
+// SaveConfigImmediate saves config immediately (for critical operations like password reset)
+func SaveConfigImmediate(config *AppConfig) {
+	configDirtyMu.Lock()
+	if configSaveTimer != nil {
+		configSaveTimer.Stop()
+		configSaveTimer = nil
+	}
+	configDirty = false
+	pendingConfig = nil
+	configDirtyMu.Unlock()
+
+	saveConfigNow(config)
+}
+
+// saveConfigNow performs the actual file write
+func saveConfigNow(config *AppConfig) {
 	path := GetConfigPath()
 	data, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {

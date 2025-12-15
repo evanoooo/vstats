@@ -151,6 +151,11 @@
 
 @import "./styles/themes/index.css";
 
+/* Override theme backgrounds when custom background image is set */
+.has-bg-image {
+  background: transparent !important;
+}
+
 /* ========================================
    Base Setup
    ======================================== */
@@ -404,7 +409,8 @@ body {
 }
 
 .vps-chip-dot--stopped {
-  background: #64748b;
+  background: #ef4444;
+  animation: pulse-glow-red 1.5s ease-in-out infinite;
 }
 
 .vps-chip-dot--error {

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useTheme, type ThemeId, type BackgroundType } from '../context/ThemeContext';
 import { showToast } from '../components/Toast';
+import AlertSettings from '../components/AlertSettings';
 import type { SiteSettings, SocialLink, GroupDimension } from '../types';
 import { sanitizeSiteSettings } from '../utils/security';
 
@@ -63,9 +64,13 @@ interface RemoteServer {
   // Extended metadata
   price_amount?: string;
   price_period?: string;
+  price_currency?: string;
   purchase_date?: string;
+  expiry_date?: string;
+  auto_renew?: boolean;
   remaining_value?: string;
   tip_badge?: string;
+  notes?: string;
 }
 
 interface PingTargetConfig {
@@ -570,6 +575,366 @@ function ThemeSettingsSection({ isAuthenticated, token, siteSettings, onSiteSett
   );
 }
 
+// ============================================================================
+// Audit Logs Section Component
+// ============================================================================
+
+interface AuditLog {
+  id: number;
+  timestamp: string;
+  action: string;
+  category: string;
+  user_ip: string;
+  user_agent?: string;
+  target_type?: string;
+  target_id?: string;
+  target_name?: string;
+  details?: string;
+  status: string;
+  error_message?: string;
+}
+
+interface AuditLogStats {
+  total: number;
+  today: number;
+  errors: number;
+  by_category: Record<string, number>;
+  top_actions: Record<string, number>;
+  oldest_timestamp?: string;
+}
+
+interface AuditLogsSectionProps {
+  token: string | null;
+  isZh: boolean;
+}
+
+function AuditLogsSection({ token, isZh }: AuditLogsSectionProps) {
+  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<AuditLogStats | null>(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [limit] = useState(20);
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [exporting, setExporting] = useState(false);
+
+  const categories = [
+    { value: '', label: isZh ? '全部' : 'All' },
+    { value: 'auth', label: isZh ? '认证' : 'Auth' },
+    { value: 'server', label: isZh ? '服务器' : 'Server' },
+    { value: 'settings', label: isZh ? '设置' : 'Settings' },
+    { value: 'alert', label: isZh ? '告警' : 'Alert' },
+    { value: 'system', label: isZh ? '系统' : 'System' },
+  ];
+
+  const actionLabels: Record<string, string> = {
+    login: isZh ? '登录' : 'Login',
+    login_failed: isZh ? '登录失败' : 'Login Failed',
+    logout: isZh ? '登出' : 'Logout',
+    password_change: isZh ? '修改密码' : 'Password Change',
+    oauth_login: isZh ? 'OAuth 登录' : 'OAuth Login',
+    oauth_login_failed: isZh ? 'OAuth 登录失败' : 'OAuth Login Failed',
+    server_create: isZh ? '创建服务器' : 'Server Created',
+    server_update: isZh ? '更新服务器' : 'Server Updated',
+    server_delete: isZh ? '删除服务器' : 'Server Deleted',
+    server_upgrade: isZh ? '升级服务器' : 'Server Upgrade',
+    agent_register: isZh ? 'Agent 注册' : 'Agent Register',
+    agent_connect: isZh ? 'Agent 连接' : 'Agent Connect',
+    agent_disconnect: isZh ? 'Agent 断开' : 'Agent Disconnect',
+    settings_update: isZh ? '更新设置' : 'Settings Update',
+    site_settings_update: isZh ? '更新站点设置' : 'Site Settings Update',
+    probe_settings_update: isZh ? '更新探测设置' : 'Probe Settings Update',
+    oauth_settings_update: isZh ? '更新 OAuth 设置' : 'OAuth Settings Update',
+    local_node_update: isZh ? '更新本地节点' : 'Local Node Update',
+    alert_config_update: isZh ? '更新告警配置' : 'Alert Config Update',
+    channel_create: isZh ? '创建通知渠道' : 'Channel Created',
+    channel_update: isZh ? '更新通知渠道' : 'Channel Updated',
+    channel_delete: isZh ? '删除通知渠道' : 'Channel Deleted',
+    channel_test: isZh ? '测试通知渠道' : 'Channel Test',
+    alert_mute: isZh ? '静音告警' : 'Alert Muted',
+    rule_update: isZh ? '更新规则' : 'Rule Updated',
+    template_update: isZh ? '更新模板' : 'Template Updated',
+    group_create: isZh ? '创建分组' : 'Group Created',
+    group_update: isZh ? '更新分组' : 'Group Updated',
+    group_delete: isZh ? '删除分组' : 'Group Deleted',
+    dimension_create: isZh ? '创建维度' : 'Dimension Created',
+    dimension_update: isZh ? '更新维度' : 'Dimension Updated',
+    dimension_delete: isZh ? '删除维度' : 'Dimension Deleted',
+    option_create: isZh ? '创建选项' : 'Option Created',
+    option_update: isZh ? '更新选项' : 'Option Updated',
+    option_delete: isZh ? '删除选项' : 'Option Deleted',
+  };
+
+  const fetchLogs = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: limit.toString(),
+      });
+      if (categoryFilter) params.append('category', categoryFilter);
+      if (searchQuery) params.append('search', searchQuery);
+
+      const res = await fetch(`/api/audit-logs?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setLogs(data.logs || []);
+        setTotal(data.total || 0);
+      }
+    } catch (e) {
+      console.error('Failed to fetch audit logs:', e);
+    }
+    setLoading(false);
+  }, [token, page, limit, categoryFilter, searchQuery]);
+
+  const fetchStats = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await fetch('/api/audit-logs/stats', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStats(data);
+      }
+    } catch (e) {
+      console.error('Failed to fetch audit stats:', e);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    fetchLogs();
+  }, [fetchLogs]);
+
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
+
+  const handleExport = async (format: 'json' | 'csv') => {
+    if (!token) return;
+    setExporting(true);
+    try {
+      const params = new URLSearchParams({ format });
+      if (categoryFilter) params.append('category', categoryFilter);
+      
+      const res = await fetch(`/api/audit-logs/export?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `audit-logs-${new Date().toISOString().split('T')[0]}.${format}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        showToast(isZh ? '导出成功' : 'Export successful', 'success');
+      }
+    } catch (e) {
+      console.error('Failed to export:', e);
+      showToast(isZh ? '导出失败' : 'Export failed', 'error');
+    }
+    setExporting(false);
+  };
+
+  const formatTimestamp = (ts: string) => {
+    const date = new Date(ts);
+    return date.toLocaleString();
+  };
+
+  const getCategoryColor = (category: string) => {
+    const colors: Record<string, string> = {
+      auth: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+      server: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+      settings: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+      alert: 'bg-red-500/20 text-red-400 border-red-500/30',
+      system: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+    };
+    return colors[category] || colors.system;
+  };
+
+  const getStatusColor = (status: string) => {
+    return status === 'success' 
+      ? 'text-emerald-400' 
+      : 'text-red-400';
+  };
+
+  const totalPages = Math.ceil(total / limit);
+
+  return (
+    <div data-section="audit-logs" className="nezha-card p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-lg font-bold text-white flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-slate-500"></span>
+          {isZh ? '审计日志' : 'Audit Logs'}
+        </h2>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => handleExport('csv')}
+            disabled={exporting}
+            className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 text-xs transition-colors disabled:opacity-50"
+          >
+            {isZh ? '导出 CSV' : 'Export CSV'}
+          </button>
+          <button
+            onClick={() => handleExport('json')}
+            disabled={exporting}
+            className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 text-xs transition-colors disabled:opacity-50"
+          >
+            {isZh ? '导出 JSON' : 'Export JSON'}
+          </button>
+        </div>
+      </div>
+
+      {/* Stats Cards */}
+      {stats && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+            <div className="text-2xl font-bold text-white">{stats.total}</div>
+            <div className="text-xs text-gray-500">{isZh ? '总记录' : 'Total Records'}</div>
+          </div>
+          <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+            <div className="text-2xl font-bold text-blue-400">{stats.today}</div>
+            <div className="text-xs text-gray-500">{isZh ? '今日记录' : 'Today'}</div>
+          </div>
+          <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+            <div className="text-2xl font-bold text-red-400">{stats.errors}</div>
+            <div className="text-xs text-gray-500">{isZh ? '错误' : 'Errors'}</div>
+          </div>
+          <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+            <div className="text-2xl font-bold text-emerald-400">
+              {Object.keys(stats.by_category).length}
+            </div>
+            <div className="text-xs text-gray-500">{isZh ? '分类' : 'Categories'}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-4 mb-6">
+        <select
+          value={categoryFilter}
+          onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}
+          className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-slate-500/50"
+        >
+          {categories.map(cat => (
+            <option key={cat.value} value={cat.value} className="bg-gray-900">{cat.label}</option>
+          ))}
+        </select>
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { setPage(1); fetchLogs(); } }}
+          placeholder={isZh ? '搜索 IP、目标名称...' : 'Search IP, target name...'}
+          className="flex-1 min-w-[200px] px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-slate-500/50"
+        />
+        <button
+          onClick={() => { setPage(1); fetchLogs(); }}
+          className="px-4 py-2 rounded-lg bg-slate-500/20 hover:bg-slate-500/30 text-slate-400 text-sm transition-colors"
+        >
+          {isZh ? '搜索' : 'Search'}
+        </button>
+      </div>
+
+      {/* Logs Table */}
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <svg className="animate-spin h-8 w-8 text-slate-400" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+        </div>
+      ) : logs.length === 0 ? (
+        <div className="text-center py-12 text-gray-500">
+          {isZh ? '暂无审计日志' : 'No audit logs found'}
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-gray-500 border-b border-white/10">
+                <th className="pb-3 font-medium">{isZh ? '时间' : 'Time'}</th>
+                <th className="pb-3 font-medium">{isZh ? '操作' : 'Action'}</th>
+                <th className="pb-3 font-medium">{isZh ? '分类' : 'Category'}</th>
+                <th className="pb-3 font-medium">{isZh ? '目标' : 'Target'}</th>
+                <th className="pb-3 font-medium">IP</th>
+                <th className="pb-3 font-medium">{isZh ? '状态' : 'Status'}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {logs.map((log) => (
+                <tr key={log.id} className="hover:bg-white/5 transition-colors">
+                  <td className="py-3 text-gray-400 whitespace-nowrap">
+                    {formatTimestamp(log.timestamp)}
+                  </td>
+                  <td className="py-3 text-white">
+                    {actionLabels[log.action] || log.action}
+                  </td>
+                  <td className="py-3">
+                    <span className={`px-2 py-1 rounded text-xs border ${getCategoryColor(log.category)}`}>
+                      {log.category}
+                    </span>
+                  </td>
+                  <td className="py-3 text-gray-300">
+                    {log.target_name || log.target_id || '-'}
+                  </td>
+                  <td className="py-3 text-gray-500 font-mono text-xs">
+                    {log.user_ip}
+                  </td>
+                  <td className="py-3">
+                    <span className={`font-medium ${getStatusColor(log.status)}`}>
+                      {log.status === 'success' ? '✓' : '✗'}
+                    </span>
+                    {log.error_message && (
+                      <span className="ml-2 text-red-400 text-xs">{log.error_message}</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-6 pt-4 border-t border-white/10">
+          <div className="text-sm text-gray-500">
+            {isZh ? `共 ${total} 条记录` : `${total} records total`}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage(Math.max(1, page - 1))}
+              disabled={page === 1}
+              className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 text-sm transition-colors disabled:opacity-50"
+            >
+              {isZh ? '上一页' : 'Prev'}
+            </button>
+            <span className="text-gray-400 text-sm">
+              {page} / {totalPages}
+            </span>
+            <button
+              onClick={() => setPage(Math.min(totalPages, page + 1))}
+              disabled={page === totalPages}
+              className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 text-sm transition-colors disabled:opacity-50"
+            >
+              {isZh ? '下一页' : 'Next'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Settings() {
   const { t, i18n } = useTranslation();
   const { isAuthenticated, token, logout, isLoading: authLoading } = useAuth();
@@ -628,17 +993,48 @@ export default function Settings() {
     allowed_users?: string[];
     github?: { enabled: boolean; client_id: string; has_secret: boolean; allowed_users: string[] };
     google?: { enabled: boolean; client_id: string; has_secret: boolean; allowed_users: string[] };
+    oidc?: { id: string; enabled: boolean; name: string; issuer: string; client_id: string; has_secret: boolean; scopes: string[]; allowed_users: string[]; allowed_groups: string[]; username_claim: string }[];
+    cloudflare_access?: { enabled: boolean; team_domain: string; aud: string; allowed_users: string[] };
+    bindings?: { provider: string; provider_id: string; identifier: string; bound_at: string }[];
   }>({});
+  
+  // OIDC provider interface
+  interface OIDCProviderForm {
+    id: string;
+    enabled: boolean;
+    name: string;
+    issuer: string;
+    client_id: string;
+    client_secret: string;
+    scopes: string;
+    allowed_users: string;
+    allowed_groups: string;
+    username_claim: string;
+  }
+  
+  // SSO Binding interface
+  interface SSOBinding {
+    provider: string;
+    provider_id: string;
+    identifier: string;
+    bound_at: string;
+  }
+  
   const [oauthForm, setOauthForm] = useState({
     use_centralized: true,
     allowed_users: '',
     github: { enabled: false, client_id: '', client_secret: '', allowed_users: '' },
-    google: { enabled: false, client_id: '', client_secret: '', allowed_users: '' }
+    google: { enabled: false, client_id: '', client_secret: '', allowed_users: '' },
+    oidc: [] as OIDCProviderForm[],
+    cloudflare_access: { enabled: false, team_domain: '', aud: '', allowed_users: '' }
   });
+  const [ssoBindings, setSsoBindings] = useState<SSOBinding[]>([]);
   const [oauthSaving, setOauthSaving] = useState(false);
   const [oauthSuccess, setOauthSuccess] = useState(false);
   // Used to track if self-hosted OAuth was previously configured
   const [, setShowAdvancedOAuth] = useState(false);
+  // OAuth tab: 'basic', 'oidc', 'cloudflare', 'bindings'
+  const [oauthTab, setOauthTab] = useState<'basic' | 'oidc' | 'cloudflare' | 'bindings'>('basic');
   
   // Edit server
   const [editingServer, setEditingServer] = useState<string | null>(null);
@@ -649,8 +1045,12 @@ export default function Settings() {
     tag: '',
     price_amount: '',
     price_period: 'month' as 'month' | 'year',
+    price_currency: 'USD',
     purchase_date: '',
+    expiry_date: '',
+    auto_renew: false,
     tip_badge: '',
+    notes: '',
     group_values: {} as Record<string, string>
   });
   const [editLoading, setEditLoading] = useState(false);
@@ -665,8 +1065,12 @@ export default function Settings() {
     tag: '',
     price_amount: '',
     price_period: 'month' as 'month' | 'year',
+    price_currency: 'USD',
     purchase_date: '',
+    expiry_date: '',
+    auto_renew: false,
     tip_badge: '',
+    notes: '',
     group_values: {} as Record<string, string>
   });
   const [showLocalNodeForm, setShowLocalNodeForm] = useState(false);
@@ -951,8 +1355,28 @@ export default function Settings() {
             client_id: data.google?.client_id || '',
             client_secret: '',
             allowed_users: data.google?.allowed_users?.join(', ') || ''
+          },
+          oidc: (data.oidc || []).map((p: any) => ({
+            id: p.id || '',
+            enabled: p.enabled || false,
+            name: p.name || '',
+            issuer: p.issuer || '',
+            client_id: p.client_id || '',
+            client_secret: '',
+            scopes: p.scopes?.join(', ') || 'openid, email, profile',
+            allowed_users: p.allowed_users?.join(', ') || '',
+            allowed_groups: p.allowed_groups?.join(', ') || '',
+            username_claim: p.username_claim || 'email'
+          })),
+          cloudflare_access: {
+            enabled: data.cloudflare_access?.enabled || false,
+            team_domain: data.cloudflare_access?.team_domain || '',
+            aud: data.cloudflare_access?.aud || '',
+            allowed_users: data.cloudflare_access?.allowed_users?.join(', ') || ''
           }
         });
+        // Set SSO bindings
+        setSsoBindings(data.bindings || []);
         // Show advanced settings if self-hosted is configured
         if (!data.use_centralized && (data.github?.enabled || data.google?.enabled)) {
           setShowAdvancedOAuth(true);
@@ -1005,6 +1429,35 @@ export default function Settings() {
         }
       }
       
+      // OIDC providers (always include)
+      if (oauthForm.oidc.length > 0) {
+        payload.oidc = oauthForm.oidc.map(p => ({
+          id: p.id,
+          enabled: p.enabled,
+          name: p.name,
+          issuer: p.issuer,
+          client_id: p.client_id,
+          client_secret: p.client_secret || undefined,
+          scopes: p.scopes.split(',').map(s => s.trim()).filter(s => s.length > 0),
+          allowed_users: p.allowed_users.split(',').map(u => u.trim()).filter(u => u.length > 0),
+          allowed_groups: p.allowed_groups.split(',').map(g => g.trim()).filter(g => g.length > 0),
+          username_claim: p.username_claim || 'email'
+        }));
+      }
+      
+      // Cloudflare Access (always include if configured)
+      if (oauthForm.cloudflare_access.team_domain || oauthForm.cloudflare_access.enabled) {
+        payload.cloudflare_access = {
+          enabled: oauthForm.cloudflare_access.enabled,
+          team_domain: oauthForm.cloudflare_access.team_domain,
+          aud: oauthForm.cloudflare_access.aud,
+          allowed_users: oauthForm.cloudflare_access.allowed_users
+            .split(',')
+            .map(u => u.trim())
+            .filter(u => u.length > 0)
+        };
+      }
+      
       const res = await fetch('/api/settings/oauth', {
         method: 'PUT',
         headers: {
@@ -1024,6 +1477,60 @@ export default function Settings() {
     }
     
     setOauthSaving(false);
+  };
+  
+  // Add new OIDC provider
+  const addOIDCProvider = () => {
+    const newProvider: OIDCProviderForm = {
+      id: `oidc_${oauthForm.oidc.length}`,
+      enabled: false,
+      name: '',
+      issuer: '',
+      client_id: '',
+      client_secret: '',
+      scopes: 'openid, email, profile',
+      allowed_users: '',
+      allowed_groups: '',
+      username_claim: 'email'
+    };
+    setOauthForm({
+      ...oauthForm,
+      oidc: [...oauthForm.oidc, newProvider]
+    });
+  };
+  
+  // Remove OIDC provider
+  const removeOIDCProvider = (index: number) => {
+    setOauthForm({
+      ...oauthForm,
+      oidc: oauthForm.oidc.filter((_, i) => i !== index)
+    });
+  };
+  
+  // Update OIDC provider
+  const updateOIDCProvider = (index: number, field: keyof OIDCProviderForm, value: string | boolean) => {
+    const updated = [...oauthForm.oidc];
+    updated[index] = { ...updated[index], [field]: value };
+    setOauthForm({ ...oauthForm, oidc: updated });
+  };
+  
+  // Delete SSO binding
+  const deleteSSOBinding = async (provider: string, identifier: string) => {
+    try {
+      const res = await fetch(`/api/sso/bindings/${provider}?identifier=${encodeURIComponent(identifier)}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (res.ok) {
+        setSsoBindings(ssoBindings.filter(b => !(b.provider === provider && b.identifier === identifier)));
+        showToast(isZh ? 'SSO 绑定已删除' : 'SSO binding deleted', 'success');
+      }
+    } catch (e) {
+      console.error('Failed to delete SSO binding', e);
+      showToast(isZh ? '删除失败' : 'Delete failed', 'error');
+    }
   };
   
   const saveProbeSettings = async () => {
@@ -1608,8 +2115,12 @@ export default function Settings() {
       tag: server.tag || '',
       price_amount: server.price_amount || '',
       price_period: (server.price_period as 'month' | 'year') || 'month',
+      price_currency: server.price_currency || 'USD',
       purchase_date: server.purchase_date || '',
+      expiry_date: server.expiry_date || '',
+      auto_renew: server.auto_renew || false,
       tip_badge: server.tip_badge || '',
+      notes: server.notes || '',
       group_values: server.group_values ? { ...server.group_values } : {}
     });
   };
@@ -1643,11 +2154,19 @@ export default function Settings() {
       if (editForm.price_amount.trim()) {
         updateData.price_amount = editForm.price_amount.trim();
         updateData.price_period = editForm.price_period;
+        updateData.price_currency = editForm.price_currency;
       }
       
       // Add other optional fields
       if (editForm.purchase_date.trim()) {
         updateData.purchase_date = editForm.purchase_date.trim();
+      }
+      if (editForm.expiry_date.trim()) {
+        updateData.expiry_date = editForm.expiry_date.trim();
+      }
+      updateData.auto_renew = editForm.auto_renew;
+      if (editForm.notes.trim()) {
+        updateData.notes = editForm.notes.trim();
       }
       if (editForm.tip_badge.trim()) {
         updateData.tip_badge = editForm.tip_badge.trim();
@@ -1678,8 +2197,12 @@ export default function Settings() {
             tag: '',
             price_amount: '',
             price_period: 'month',
+            price_currency: 'USD',
             purchase_date: '',
+            expiry_date: '',
+            auto_renew: false,
             tip_badge: '',
+            notes: '',
             group_values: {}
           });
           setEditSuccess(false);
@@ -1920,6 +2443,21 @@ export default function Settings() {
               </div>
             </button>
 
+          {/* Alerts */}
+          <button
+            onClick={() => switchSection('alerts')}
+            className={`w-full text-left p-4 rounded-xl transition-all border ${
+              activeSection === 'alerts'
+                ? 'bg-red-500/20 text-red-400 border-red-500/30 shadow-lg'
+                : 'bg-white/5 text-gray-300 border-white/10 hover:bg-white/10 hover:border-white/20'
+            }`}
+            >
+              <div className="flex items-center gap-3 mb-1">
+                <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                <span className="text-sm font-bold">{isZh ? '告警通知' : 'Alerts'}</span>
+              </div>
+            </button>
+
           {/* Security */}
           <button
             onClick={() => switchSection('security')}
@@ -1932,6 +2470,21 @@ export default function Settings() {
               <div className="flex items-center gap-3 mb-1">
                 <span className="w-2 h-2 rounded-full bg-purple-500"></span>
                 <span className="text-sm font-bold">{isZh ? '安全' : 'Security'}</span>
+              </div>
+            </button>
+
+          {/* Audit Logs */}
+          <button
+            onClick={() => switchSection('audit-logs')}
+            className={`w-full text-left p-4 rounded-xl transition-all border ${
+              activeSection === 'audit-logs'
+                ? 'bg-slate-500/20 text-slate-400 border-slate-500/30 shadow-lg'
+                : 'bg-white/5 text-gray-300 border-white/10 hover:bg-white/10 hover:border-white/20'
+            }`}
+            >
+              <div className="flex items-center gap-3 mb-1">
+                <span className="w-2 h-2 rounded-full bg-slate-500"></span>
+                <span className="text-sm font-bold">{isZh ? '审计日志' : 'Audit Logs'}</span>
               </div>
             </button>
         </nav>
@@ -2207,7 +2760,7 @@ export default function Settings() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-orange-500"></span>
-            OAuth 2.0 登录
+            OAuth / SSO 登录
           </h2>
           <button
             onClick={() => setShowOAuthSettings(!showOAuthSettings)}
@@ -2218,7 +2771,7 @@ export default function Settings() {
         </div>
         
         <p className="text-gray-400 text-sm mb-4">
-          启用 GitHub 和 Google 账号登录，无需配置即可使用统一认证服务。
+          支持 GitHub、Google、通用 OIDC Provider 和 Cloudflare Access 登录。
         </p>
         
         {oauthSuccess && (
@@ -2229,70 +2782,445 @@ export default function Settings() {
         
         {showOAuthSettings && (
           <div className="space-y-6">
-            {/* Centralized OAuth - Simple Toggle */}
-            <div className="p-4 rounded-xl bg-gradient-to-r from-orange-500/10 to-transparent border border-orange-500/20">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center">
-                    <svg className="w-5 h-5 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="font-medium text-white">启用 OAuth 登录</h3>
-                    <p className="text-xs text-gray-500">使用 GitHub 或 Google 账号登录（推荐）</p>
-                  </div>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={oauthForm.use_centralized}
-                    onChange={(e) => setOauthForm({
-                      ...oauthForm,
-                      use_centralized: e.target.checked
-                    })}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
-                </label>
-              </div>
-              
-              {oauthForm.use_centralized && (
-                <div className="space-y-4 pt-4 border-t border-orange-500/10">
-                  <div className="flex items-center gap-2 text-sm text-emerald-400">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    已启用 GitHub 和 Google 登录
-                  </div>
-                  
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-2">
-                      允许的用户 <span className="text-gray-600">（GitHub 用户名或 Google 邮箱，逗号分隔，留空所有人都不能登录）</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={oauthForm.allowed_users}
-                      onChange={(e) => setOauthForm({
-                        ...oauthForm,
-                        allowed_users: e.target.value
-                      })}
-                      className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-orange-500/50"
-                      placeholder="github_user, user@gmail.com"
-                    />
-                  </div>
-                  
-                  <div className="text-xs text-gray-500 bg-black/20 rounded-lg p-3">
-                    <p className="font-medium text-gray-400 mb-1">💡 使用说明：</p>
-                    <ul className="list-disc list-inside space-y-1">
-                      <li>启用后，登录页面将显示 GitHub 和 Google 登录按钮</li>
-                      <li>OAuth 认证由 vstats.zsoft.cc 统一处理，无需额外配置</li>
-                      <li>设置允许的用户可以限制谁能登录</li>
-                    </ul>
-                  </div>
-                </div>
-              )}
+            {/* Tabs */}
+            <div className="flex gap-2 border-b border-white/10 pb-2 overflow-x-auto">
+              <button
+                onClick={() => setOauthTab('basic')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                  oauthTab === 'basic' 
+                    ? 'bg-orange-500/20 text-orange-400' 
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                }`}
+              >
+                基础设置
+              </button>
+              <button
+                onClick={() => setOauthTab('oidc')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                  oauthTab === 'oidc' 
+                    ? 'bg-purple-500/20 text-purple-400' 
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                }`}
+              >
+                OIDC Provider {oauthForm.oidc.length > 0 && `(${oauthForm.oidc.length})`}
+              </button>
+              <button
+                onClick={() => setOauthTab('cloudflare')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                  oauthTab === 'cloudflare' 
+                    ? 'bg-blue-500/20 text-blue-400' 
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                }`}
+              >
+                Cloudflare Access
+              </button>
+              <button
+                onClick={() => setOauthTab('bindings')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                  oauthTab === 'bindings' 
+                    ? 'bg-emerald-500/20 text-emerald-400' 
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                }`}
+              >
+                SSO 绑定 {ssoBindings.length > 0 && `(${ssoBindings.length})`}
+              </button>
             </div>
+
+            {/* Basic OAuth Tab */}
+            {oauthTab === 'basic' && (
+              <div className="space-y-4">
+                {/* Centralized OAuth - Simple Toggle */}
+                <div className="p-4 rounded-xl bg-gradient-to-r from-orange-500/10 to-transparent border border-orange-500/20">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                        <svg className="w-5 h-5 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <h3 className="font-medium text-white">启用 OAuth 登录（托管模式）</h3>
+                        <p className="text-xs text-gray-500">使用 GitHub 或 Google 账号登录（推荐）</p>
+                      </div>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={oauthForm.use_centralized}
+                        onChange={(e) => setOauthForm({
+                          ...oauthForm,
+                          use_centralized: e.target.checked
+                        })}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                    </label>
+                  </div>
+                  
+                  {oauthForm.use_centralized && (
+                    <div className="space-y-4 pt-4 border-t border-orange-500/10">
+                      <div className="flex items-center gap-2 text-sm text-emerald-400">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        已启用 GitHub 和 Google 登录
+                      </div>
+                      
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-2">
+                          允许的用户 <span className="text-gray-600">（GitHub 用户名或 Google 邮箱，逗号分隔，留空所有人都不能登录）</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={oauthForm.allowed_users}
+                          onChange={(e) => setOauthForm({
+                            ...oauthForm,
+                            allowed_users: e.target.value
+                          })}
+                          className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-orange-500/50"
+                          placeholder="github_user, user@gmail.com"
+                        />
+                      </div>
+                      
+                      <div className="text-xs text-gray-500 bg-black/20 rounded-lg p-3">
+                        <p className="font-medium text-gray-400 mb-1">💡 使用说明：</p>
+                        <ul className="list-disc list-inside space-y-1">
+                          <li>启用后，登录页面将显示 GitHub 和 Google 登录按钮</li>
+                          <li>OAuth 认证由 vstats.zsoft.cc 统一处理，无需额外配置</li>
+                          <li>设置允许的用户可以限制谁能登录</li>
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* OIDC Provider Tab */}
+            {oauthTab === 'oidc' && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium text-white">通用 OIDC Provider</h3>
+                    <p className="text-xs text-gray-500">支持 Authentik、Keycloak、Okta、Auth0 等 OIDC 兼容服务</p>
+                  </div>
+                  <button
+                    onClick={addOIDCProvider}
+                    className="px-4 py-2 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 text-sm font-medium transition-colors"
+                  >
+                    添加 Provider
+                  </button>
+                </div>
+
+                {oauthForm.oidc.length === 0 ? (
+                  <div className="text-center py-8 border border-dashed border-white/10 rounded-xl">
+                    <svg className="w-12 h-12 mx-auto mb-3 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    <p className="text-gray-500 text-sm">暂无 OIDC Provider 配置</p>
+                    <p className="text-gray-600 text-xs mt-1">点击上方按钮添加</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {oauthForm.oidc.map((provider, index) => (
+                      <div key={index} className="p-4 rounded-xl bg-white/[0.02] border border-white/10">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                              <span className="text-purple-400 font-bold text-sm">{index + 1}</span>
+                            </div>
+                            <input
+                              type="text"
+                              value={provider.name}
+                              onChange={(e) => updateOIDCProvider(index, 'name', e.target.value)}
+                              placeholder="Provider 名称（如 Authentik）"
+                              className="px-2 py-1 rounded bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-purple-500/50"
+                            />
+                            <label className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={provider.enabled}
+                                onChange={(e) => updateOIDCProvider(index, 'enabled', e.target.checked)}
+                                className="w-4 h-4 rounded border-white/10 bg-white/5 text-purple-500"
+                              />
+                              <span className="text-xs text-gray-400">启用</span>
+                            </label>
+                          </div>
+                          <button
+                            onClick={() => removeOIDCProvider(index)}
+                            className="p-2 rounded-lg hover:bg-red-500/10 text-gray-500 hover:text-red-400 transition-colors"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Issuer URL</label>
+                            <input
+                              type="text"
+                              value={provider.issuer}
+                              onChange={(e) => updateOIDCProvider(index, 'issuer', e.target.value)}
+                              placeholder="https://auth.example.com"
+                              className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-purple-500/50"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Client ID</label>
+                            <input
+                              type="text"
+                              value={provider.client_id}
+                              onChange={(e) => updateOIDCProvider(index, 'client_id', e.target.value)}
+                              className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-purple-500/50"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Client Secret</label>
+                            <input
+                              type="password"
+                              value={provider.client_secret}
+                              onChange={(e) => updateOIDCProvider(index, 'client_secret', e.target.value)}
+                              placeholder="留空则保持不变"
+                              className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-purple-500/50"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Scopes</label>
+                            <input
+                              type="text"
+                              value={provider.scopes}
+                              onChange={(e) => updateOIDCProvider(index, 'scopes', e.target.value)}
+                              placeholder="openid, email, profile"
+                              className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-purple-500/50"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">允许的用户（邮箱/用户名，逗号分隔）</label>
+                            <input
+                              type="text"
+                              value={provider.allowed_users}
+                              onChange={(e) => updateOIDCProvider(index, 'allowed_users', e.target.value)}
+                              placeholder="user@example.com, admin"
+                              className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-purple-500/50"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">允许的用户组（逗号分隔）</label>
+                            <input
+                              type="text"
+                              value={provider.allowed_groups}
+                              onChange={(e) => updateOIDCProvider(index, 'allowed_groups', e.target.value)}
+                              placeholder="admins, operators"
+                              className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-purple-500/50"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">用户名 Claim</label>
+                            <select
+                              value={provider.username_claim}
+                              onChange={(e) => updateOIDCProvider(index, 'username_claim', e.target.value)}
+                              className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-purple-500/50"
+                            >
+                              <option value="email">email</option>
+                              <option value="preferred_username">preferred_username</option>
+                              <option value="sub">sub</option>
+                              <option value="name">name</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="text-xs text-gray-500 bg-black/20 rounded-lg p-3">
+                  <p className="font-medium text-gray-400 mb-1">💡 OIDC 配置说明：</p>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>Issuer URL 是 OIDC Provider 的基础 URL，系统会自动获取 .well-known/openid-configuration</li>
+                    <li>回调地址格式：<code className="text-purple-400">https://your-domain/api/auth/oauth/oidc/oidc_0/callback</code></li>
+                    <li>支持基于用户邮箱或用户组的访问控制</li>
+                  </ul>
+                </div>
+              </div>
+            )}
+
+            {/* Cloudflare Access Tab */}
+            {oauthTab === 'cloudflare' && (
+              <div className="space-y-4">
+                <div className="p-4 rounded-xl bg-gradient-to-r from-blue-500/10 to-transparent border border-blue-500/20">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                        <svg className="w-5 h-5 text-blue-400" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M16.5 8.25a.75.75 0 0 0-.75-.75h-6a.75.75 0 0 0 0 1.5h4.19l-6.72 6.72a.75.75 0 1 0 1.06 1.06l6.72-6.72v4.19a.75.75 0 0 0 1.5 0v-6Z" />
+                          <path d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25Z" fillOpacity=".2" />
+                        </svg>
+                      </div>
+                      <div>
+                        <h3 className="font-medium text-white">Cloudflare Access</h3>
+                        <p className="text-xs text-gray-500">使用 Cloudflare Zero Trust 进行身份验证</p>
+                      </div>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={oauthForm.cloudflare_access.enabled}
+                        onChange={(e) => setOauthForm({
+                          ...oauthForm,
+                          cloudflare_access: { ...oauthForm.cloudflare_access, enabled: e.target.checked }
+                        })}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
+                    </label>
+                  </div>
+
+                  {oauthForm.cloudflare_access.enabled && (
+                    <div className="space-y-4 pt-4 border-t border-blue-500/10">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Team Domain</label>
+                          <input
+                            type="text"
+                            value={oauthForm.cloudflare_access.team_domain}
+                            onChange={(e) => setOauthForm({
+                              ...oauthForm,
+                              cloudflare_access: { ...oauthForm.cloudflare_access, team_domain: e.target.value }
+                            })}
+                            placeholder="mycompany.cloudflareaccess.com"
+                            className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-blue-500/50"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Application AUD</label>
+                          <input
+                            type="text"
+                            value={oauthForm.cloudflare_access.aud}
+                            onChange={(e) => setOauthForm({
+                              ...oauthForm,
+                              cloudflare_access: { ...oauthForm.cloudflare_access, aud: e.target.value }
+                            })}
+                            placeholder="从 Cloudflare Access 控制台获取"
+                            className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-blue-500/50"
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <label className="block text-xs text-gray-500 mb-1">允许的用户（邮箱，逗号分隔，留空则使用 Access 策略）</label>
+                          <input
+                            type="text"
+                            value={oauthForm.cloudflare_access.allowed_users}
+                            onChange={(e) => setOauthForm({
+                              ...oauthForm,
+                              cloudflare_access: { ...oauthForm.cloudflare_access, allowed_users: e.target.value }
+                            })}
+                            placeholder="admin@example.com, user@example.com"
+                            className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-blue-500/50"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="text-xs text-gray-500 bg-black/20 rounded-lg p-3">
+                  <p className="font-medium text-gray-400 mb-1">💡 Cloudflare Access 配置说明：</p>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>在 Cloudflare Zero Trust 控制台创建 Self-hosted 应用</li>
+                    <li>Application Domain 设置为你的 vStats 域名</li>
+                    <li>AUD 值可在应用详情页的 Overview 标签中找到</li>
+                    <li>确保 Access 策略允许目标用户访问</li>
+                  </ul>
+                </div>
+              </div>
+            )}
+
+            {/* SSO Bindings Tab */}
+            {oauthTab === 'bindings' && (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="font-medium text-white mb-2">已绑定的 SSO 账号</h3>
+                  <p className="text-xs text-gray-500 mb-4">这些 SSO 账号已绑定到管理员账户，可用于登录</p>
+                </div>
+
+                {ssoBindings.length === 0 ? (
+                  <div className="text-center py-8 border border-dashed border-white/10 rounded-xl">
+                    <svg className="w-12 h-12 mx-auto mb-3 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                    <p className="text-gray-500 text-sm">暂无 SSO 绑定</p>
+                    <p className="text-gray-600 text-xs mt-1">通过 OAuth 登录后自动绑定</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {ssoBindings.map((binding, index) => (
+                      <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-white/[0.02] border border-white/10">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                            binding.provider === 'github' ? 'bg-gray-800' :
+                            binding.provider === 'google' ? 'bg-white' :
+                            binding.provider.startsWith('oidc') ? 'bg-purple-500/20' :
+                            binding.provider === 'cloudflare' ? 'bg-blue-500/20' : 'bg-gray-500/20'
+                          }`}>
+                            {binding.provider === 'github' && (
+                              <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+                              </svg>
+                            )}
+                            {binding.provider === 'google' && (
+                              <svg className="w-4 h-4" viewBox="0 0 24 24">
+                                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                              </svg>
+                            )}
+                            {binding.provider.startsWith('oidc') && (
+                              <svg className="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                              </svg>
+                            )}
+                            {binding.provider === 'cloudflare' && (
+                              <svg className="w-4 h-4 text-blue-400" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M16.5 8.25a.75.75 0 0 0-.75-.75h-6a.75.75 0 0 0 0 1.5h4.19l-6.72 6.72a.75.75 0 1 0 1.06 1.06l6.72-6.72v4.19a.75.75 0 0 0 1.5 0v-6Z" />
+                              </svg>
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-sm text-white">{binding.identifier}</p>
+                            <p className="text-xs text-gray-500">
+                              {binding.provider === 'github' ? 'GitHub' :
+                               binding.provider === 'google' ? 'Google' :
+                               binding.provider.startsWith('oidc') ? 'OIDC' :
+                               binding.provider === 'cloudflare' ? 'Cloudflare Access' : binding.provider}
+                              {binding.bound_at && ` · 绑定于 ${new Date(binding.bound_at).toLocaleDateString()}`}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => deleteSSOBinding(binding.provider, binding.identifier)}
+                          className="p-2 rounded-lg hover:bg-red-500/10 text-gray-500 hover:text-red-400 transition-colors"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="text-xs text-gray-500 bg-black/20 rounded-lg p-3">
+                  <p className="font-medium text-gray-400 mb-1">💡 SSO 绑定说明：</p>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>绑定的 SSO 账号可以直接登录管理后台</li>
+                    <li>删除绑定后该 SSO 账号将无法登录（除非在允许用户列表中）</li>
+                    <li>可以绑定多个不同 Provider 的账号</li>
+                  </ul>
+                </div>
+              </div>
+            )}
             
             <div className="flex justify-end">
               <button
@@ -2985,6 +3913,22 @@ export default function Settings() {
                       </select>
                     </div>
                     <div>
+                      <label className="block text-xs text-gray-500 mb-1">Currency</label>
+                      <select
+                        value={localNodeConfig.price_currency}
+                        onChange={(e) => setLocalNodeConfig({ ...localNodeConfig, price_currency: e.target.value })}
+                        className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-emerald-500/50"
+                      >
+                        <option value="USD">USD ($)</option>
+                        <option value="CNY">CNY (¥)</option>
+                        <option value="EUR">EUR (€)</option>
+                        <option value="GBP">GBP (£)</option>
+                        <option value="JPY">JPY (¥)</option>
+                        <option value="KRW">KRW (₩)</option>
+                        <option value="RUB">RUB (₽)</option>
+                      </select>
+                    </div>
+                    <div>
                       <label className="block text-xs text-gray-500 mb-1">Purchase Date</label>
                       <input
                         type="date"
@@ -2992,9 +3936,37 @@ export default function Settings() {
                         onChange={(e) => setLocalNodeConfig({ ...localNodeConfig, purchase_date: e.target.value })}
                         className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-emerald-500/50"
                       />
-                      <p className="text-xs text-gray-600 mt-1">Remaining value will be calculated automatically</p>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Expiry Date</label>
+                      <input
+                        type="date"
+                        value={localNodeConfig.expiry_date}
+                        onChange={(e) => setLocalNodeConfig({ ...localNodeConfig, expiry_date: e.target.value })}
+                        className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-emerald-500/50"
+                      />
+                    </div>
+                    <div className="flex items-center mt-2">
+                      <input
+                        type="checkbox"
+                        id="local_auto_renew"
+                        checked={localNodeConfig.auto_renew}
+                        onChange={(e) => setLocalNodeConfig({ ...localNodeConfig, auto_renew: e.target.checked })}
+                        className="w-4 h-4 rounded bg-white/5 border border-white/10 text-emerald-500 focus:ring-emerald-500"
+                      />
+                      <label htmlFor="local_auto_renew" className="ml-2 text-sm text-gray-400">Auto Renew</label>
                     </div>
                   </div>
+                </div>
+                <div className="mb-4">
+                  <label className="block text-xs text-gray-500 mb-1">Notes</label>
+                  <textarea
+                    value={localNodeConfig.notes}
+                    onChange={(e) => setLocalNodeConfig({ ...localNodeConfig, notes: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-emerald-500/50 resize-none"
+                    placeholder="Additional notes about this server..."
+                    rows={2}
+                  />
                 </div>
                 
                 {/* Group Dimensions Selection */}
@@ -3324,6 +4296,22 @@ export default function Settings() {
                             </select>
                           </div>
                           <div>
+                            <label className="block text-xs text-gray-500 mb-1">Currency</label>
+                            <select
+                              value={editForm.price_currency}
+                              onChange={(e) => setEditForm({ ...editForm, price_currency: e.target.value })}
+                              className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-blue-500/50"
+                            >
+                              <option value="USD">USD ($)</option>
+                              <option value="CNY">CNY (¥)</option>
+                              <option value="EUR">EUR (€)</option>
+                              <option value="GBP">GBP (£)</option>
+                              <option value="JPY">JPY (¥)</option>
+                              <option value="KRW">KRW (₩)</option>
+                              <option value="RUB">RUB (₽)</option>
+                            </select>
+                          </div>
+                          <div>
                             <label className="block text-xs text-gray-500 mb-1">Purchase Date</label>
                             <input
                               type="date"
@@ -3331,8 +4319,36 @@ export default function Settings() {
                               onChange={(e) => setEditForm({ ...editForm, purchase_date: e.target.value })}
                               className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-blue-500/50"
                             />
-                            <p className="text-xs text-gray-600 mt-1">Remaining value will be calculated automatically</p>
                           </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Expiry Date</label>
+                            <input
+                              type="date"
+                              value={editForm.expiry_date}
+                              onChange={(e) => setEditForm({ ...editForm, expiry_date: e.target.value })}
+                              className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-blue-500/50"
+                            />
+                          </div>
+                          <div className="flex items-center">
+                            <input
+                              type="checkbox"
+                              id="auto_renew"
+                              checked={editForm.auto_renew}
+                              onChange={(e) => setEditForm({ ...editForm, auto_renew: e.target.checked })}
+                              className="w-4 h-4 rounded bg-white/5 border border-white/10 text-blue-500 focus:ring-blue-500"
+                            />
+                            <label htmlFor="auto_renew" className="ml-2 text-sm text-gray-400">Auto Renew</label>
+                          </div>
+                        </div>
+                        <div className="mt-3">
+                          <label className="block text-xs text-gray-500 mb-1">Notes</label>
+                          <textarea
+                            value={editForm.notes}
+                            onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                            className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-blue-500/50 resize-none"
+                            placeholder="Additional notes about this server..."
+                            rows={2}
+                          />
                         </div>
                       </div>
                       
@@ -3386,8 +4402,12 @@ export default function Settings() {
                               tag: '',
                               price_amount: '',
                               price_period: 'month',
+                              price_currency: 'USD',
                               purchase_date: '',
+                              expiry_date: '',
+                              auto_renew: false,
                               tip_badge: '',
+                              notes: '',
                               group_values: {}
                             });
                           }}
@@ -3510,6 +4530,16 @@ export default function Settings() {
       </div>
       )}
 
+      {/* Alerts Section */}
+      {activeSection === 'alerts' && (
+      <div data-section="alerts" className="nezha-card p-6">
+        <AlertSettings 
+          token={token}
+          servers={servers.map(s => ({ id: s.id, name: s.name }))}
+        />
+      </div>
+      )}
+
       {/* Security Section */}
       {activeSection === 'security' && (
       <div data-section="security" className="nezha-card p-6">
@@ -3554,6 +4584,11 @@ export default function Settings() {
           </button>
         )}
       </div>
+      )}
+
+      {/* Audit Logs Section */}
+      {activeSection === 'audit-logs' && (
+      <AuditLogsSection token={token} isZh={isZh} />
       )}
         </div>
       </div>

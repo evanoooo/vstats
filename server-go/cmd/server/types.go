@@ -93,35 +93,88 @@ type OAuthLoginResponse struct {
 	Username  string    `json:"username"`
 }
 
+// OIDC Types
+type OIDCDiscovery struct {
+	Issuer                string   `json:"issuer"`
+	AuthorizationEndpoint string   `json:"authorization_endpoint"`
+	TokenEndpoint         string   `json:"token_endpoint"`
+	UserinfoEndpoint      string   `json:"userinfo_endpoint"`
+	JwksURI               string   `json:"jwks_uri"`
+	ScopesSupported       []string `json:"scopes_supported"`
+	ClaimsSupported       []string `json:"claims_supported"`
+}
+
+type OIDCTokenResponse struct {
+	AccessToken  string `json:"access_token"`
+	TokenType    string `json:"token_type"`
+	ExpiresIn    int    `json:"expires_in"`
+	RefreshToken string `json:"refresh_token,omitempty"`
+	IDToken      string `json:"id_token"`
+	Scope        string `json:"scope,omitempty"`
+}
+
+type OIDCUserInfo struct {
+	Sub               string   `json:"sub"`
+	Email             string   `json:"email,omitempty"`
+	EmailVerified     bool     `json:"email_verified,omitempty"`
+	Name              string   `json:"name,omitempty"`
+	PreferredUsername string   `json:"preferred_username,omitempty"`
+	Picture           string   `json:"picture,omitempty"`
+	Groups            []string `json:"groups,omitempty"`
+}
+
+// CloudflareAccessClaims represents the JWT claims from Cloudflare Access
+type CloudflareAccessClaims struct {
+	Email    string   `json:"email"`
+	Type     string   `json:"type"`
+	Identity struct {
+		ID     string `json:"id"`
+		Name   string `json:"name"`
+		Email  string `json:"email"`
+		Groups []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"groups,omitempty"`
+	} `json:"identity,omitempty"`
+}
+
 // ============================================================================
 // Server Management Types
 // ============================================================================
 
 type AddServerRequest struct {
-	Name         string            `json:"name"`
-	URL          string            `json:"url"`
-	Location     string            `json:"location"`
-	Provider     string            `json:"provider"`
-	Tag          string            `json:"tag"`
-	GroupID      string            `json:"group_id,omitempty"`     // Deprecated
-	GroupValues  map[string]string `json:"group_values,omitempty"` // dimension_id -> option_id
-	PriceAmount  string            `json:"price_amount,omitempty"`
-	PricePeriod  string            `json:"price_period,omitempty"`
-	PurchaseDate string            `json:"purchase_date,omitempty"`
-	TipBadge     string            `json:"tip_badge,omitempty"`
+	Name          string            `json:"name"`
+	URL           string            `json:"url"`
+	Location      string            `json:"location"`
+	Provider      string            `json:"provider"`
+	Tag           string            `json:"tag"`
+	GroupID       string            `json:"group_id,omitempty"`     // Deprecated
+	GroupValues   map[string]string `json:"group_values,omitempty"` // dimension_id -> option_id
+	PriceAmount   string            `json:"price_amount,omitempty"`
+	PricePeriod   string            `json:"price_period,omitempty"`
+	PriceCurrency string            `json:"price_currency,omitempty"`
+	PurchaseDate  string            `json:"purchase_date,omitempty"`
+	ExpiryDate    string            `json:"expiry_date,omitempty"`
+	AutoRenew     bool              `json:"auto_renew,omitempty"`
+	TipBadge      string            `json:"tip_badge,omitempty"`
+	Notes         string            `json:"notes,omitempty"`
 }
 
 type UpdateServerRequest struct {
-	Name         *string            `json:"name,omitempty"`
-	Location     *string            `json:"location,omitempty"`
-	Provider     *string            `json:"provider,omitempty"`
-	Tag          *string            `json:"tag,omitempty"`
-	GroupID      *string            `json:"group_id,omitempty"`     // Deprecated
-	GroupValues  *map[string]string `json:"group_values,omitempty"` // dimension_id -> option_id
-	PriceAmount  *string            `json:"price_amount,omitempty"`
-	PricePeriod  *string            `json:"price_period,omitempty"`
-	PurchaseDate *string            `json:"purchase_date,omitempty"`
-	TipBadge     *string            `json:"tip_badge,omitempty"`
+	Name          *string            `json:"name,omitempty"`
+	Location      *string            `json:"location,omitempty"`
+	Provider      *string            `json:"provider,omitempty"`
+	Tag           *string            `json:"tag,omitempty"`
+	GroupID       *string            `json:"group_id,omitempty"`     // Deprecated
+	GroupValues   *map[string]string `json:"group_values,omitempty"` // dimension_id -> option_id
+	PriceAmount   *string            `json:"price_amount,omitempty"`
+	PricePeriod   *string            `json:"price_period,omitempty"`
+	PriceCurrency *string            `json:"price_currency,omitempty"`
+	PurchaseDate  *string            `json:"purchase_date,omitempty"`
+	ExpiryDate    *string            `json:"expiry_date,omitempty"`
+	AutoRenew     *bool              `json:"auto_renew,omitempty"`
+	TipBadge      *string            `json:"tip_badge,omitempty"`
+	Notes         *string            `json:"notes,omitempty"`
 }
 
 // ============================================================================
@@ -223,21 +276,26 @@ type DashboardMessage struct {
 }
 
 type ServerMetricsUpdate struct {
-	ServerID     string            `json:"server_id"`
-	ServerName   string            `json:"server_name"`
-	Location     string            `json:"location"`
-	Provider     string            `json:"provider"`
-	Tag          string            `json:"tag"`
-	GroupID      string            `json:"group_id,omitempty"`     // Deprecated
-	GroupValues  map[string]string `json:"group_values,omitempty"` // dimension_id -> option_id
-	Version      string            `json:"version"`
-	IP           string            `json:"ip"`
-	Online       bool              `json:"online"`
-	Metrics      *SystemMetrics    `json:"metrics"`
-	PriceAmount  string            `json:"price_amount,omitempty"`
-	PricePeriod  string            `json:"price_period,omitempty"`
-	PurchaseDate string            `json:"purchase_date,omitempty"`
-	TipBadge     string            `json:"tip_badge,omitempty"`
+	ServerID      string            `json:"server_id"`
+	ServerName    string            `json:"server_name"`
+	Location      string            `json:"location"`
+	Provider      string            `json:"provider"`
+	Tag           string            `json:"tag"`
+	GroupID       string            `json:"group_id,omitempty"`     // Deprecated
+	GroupValues   map[string]string `json:"group_values,omitempty"` // dimension_id -> option_id
+	Version       string            `json:"version"`
+	IP            string            `json:"ip"`
+	Online        bool              `json:"online"`
+	Metrics       *SystemMetrics    `json:"metrics"`
+	PriceAmount   string            `json:"price_amount,omitempty"`
+	PricePeriod   string            `json:"price_period,omitempty"`
+	PriceCurrency string            `json:"price_currency,omitempty"`
+	PurchaseDate  string            `json:"purchase_date,omitempty"`
+	ExpiryDate    string            `json:"expiry_date,omitempty"`
+	AutoRenew     bool              `json:"auto_renew,omitempty"`
+	TipBadge      string            `json:"tip_badge,omitempty"`
+	Notes         string            `json:"notes,omitempty"`
+	GeoIP         *ServerGeoIP      `json:"geoip,omitempty"`
 }
 
 type DeltaMessage struct {
@@ -342,6 +400,126 @@ type UpdateAgentResponse struct {
 	Message string `json:"message"`
 }
 
+// ============================================================================
+// Audit Log Types
+// ============================================================================
+
+// AuditLogCategory represents the category of audit action
+type AuditLogCategory string
+
+const (
+	AuditCategoryAuth     AuditLogCategory = "auth"
+	AuditCategoryServer   AuditLogCategory = "server"
+	AuditCategorySettings AuditLogCategory = "settings"
+	AuditCategoryAlert    AuditLogCategory = "alert"
+	AuditCategorySystem   AuditLogCategory = "system"
+)
+
+// AuditLogAction represents the specific action
+type AuditLogAction string
+
+const (
+	// Auth actions
+	AuditActionLogin              AuditLogAction = "login"
+	AuditActionLoginFailed        AuditLogAction = "login_failed"
+	AuditActionLogout             AuditLogAction = "logout"
+	AuditActionPasswordChange     AuditLogAction = "password_change"
+	AuditActionOAuthLogin         AuditLogAction = "oauth_login"
+	AuditActionOAuthLoginFailed   AuditLogAction = "oauth_login_failed"
+
+	// Server actions
+	AuditActionServerCreate       AuditLogAction = "server_create"
+	AuditActionServerUpdate       AuditLogAction = "server_update"
+	AuditActionServerDelete       AuditLogAction = "server_delete"
+	AuditActionServerUpgrade      AuditLogAction = "server_upgrade"
+	AuditActionAgentRegister      AuditLogAction = "agent_register"
+	AuditActionAgentConnect       AuditLogAction = "agent_connect"
+	AuditActionAgentDisconnect    AuditLogAction = "agent_disconnect"
+
+	// Settings actions
+	AuditActionSettingsUpdate     AuditLogAction = "settings_update"
+	AuditActionSiteSettingsUpdate AuditLogAction = "site_settings_update"
+	AuditActionProbeSettingsUpdate AuditLogAction = "probe_settings_update"
+	AuditActionOAuthSettingsUpdate AuditLogAction = "oauth_settings_update"
+	AuditActionLocalNodeUpdate    AuditLogAction = "local_node_update"
+
+	// Alert actions
+	AuditActionAlertConfigUpdate  AuditLogAction = "alert_config_update"
+	AuditActionChannelCreate      AuditLogAction = "channel_create"
+	AuditActionChannelUpdate      AuditLogAction = "channel_update"
+	AuditActionChannelDelete      AuditLogAction = "channel_delete"
+	AuditActionChannelTest        AuditLogAction = "channel_test"
+	AuditActionAlertMute          AuditLogAction = "alert_mute"
+	AuditActionRuleUpdate         AuditLogAction = "rule_update"
+	AuditActionTemplateUpdate     AuditLogAction = "template_update"
+
+	// Group/Dimension actions
+	AuditActionGroupCreate        AuditLogAction = "group_create"
+	AuditActionGroupUpdate        AuditLogAction = "group_update"
+	AuditActionGroupDelete        AuditLogAction = "group_delete"
+	AuditActionDimensionCreate    AuditLogAction = "dimension_create"
+	AuditActionDimensionUpdate    AuditLogAction = "dimension_update"
+	AuditActionDimensionDelete    AuditLogAction = "dimension_delete"
+	AuditActionOptionCreate       AuditLogAction = "option_create"
+	AuditActionOptionUpdate       AuditLogAction = "option_update"
+	AuditActionOptionDelete       AuditLogAction = "option_delete"
+)
+
+// AuditLog represents a single audit log entry
+type AuditLog struct {
+	ID           int64            `json:"id"`
+	Timestamp    string           `json:"timestamp"`
+	Action       AuditLogAction   `json:"action"`
+	Category     AuditLogCategory `json:"category"`
+	UserIP       string           `json:"user_ip"`
+	UserAgent    string           `json:"user_agent,omitempty"`
+	TargetType   string           `json:"target_type,omitempty"`
+	TargetID     string           `json:"target_id,omitempty"`
+	TargetName   string           `json:"target_name,omitempty"`
+	Details      string           `json:"details,omitempty"`
+	Status       string           `json:"status"`
+	ErrorMessage string           `json:"error_message,omitempty"`
+}
+
+// AuditLogEntry is used for creating new audit log entries
+type AuditLogEntry struct {
+	Action       AuditLogAction
+	Category     AuditLogCategory
+	UserIP       string
+	UserAgent    string
+	TargetType   string
+	TargetID     string
+	TargetName   string
+	Details      string
+	Status       string
+	ErrorMessage string
+}
+
+// AuditLogQuery represents query parameters for fetching audit logs
+type AuditLogQuery struct {
+	Page       int              `form:"page"`
+	Limit      int              `form:"limit"`
+	Category   AuditLogCategory `form:"category"`
+	Action     AuditLogAction   `form:"action"`
+	StartDate  string           `form:"start_date"`
+	EndDate    string           `form:"end_date"`
+	Search     string           `form:"search"`
+}
+
+// AuditLogResponse represents the response for audit log queries
+type AuditLogResponse struct {
+	Logs  []AuditLog `json:"logs"`
+	Total int64      `json:"total"`
+	Page  int        `json:"page"`
+	Limit int        `json:"limit"`
+}
+
+// AuditLogSettings represents the audit log retention settings
+type AuditLogSettings struct {
+	RetentionDays int  `json:"retention_days"`
+	Enabled       bool `json:"enabled"`
+}
+
 type InstallCommand struct {
 	Command   string `json:"command"`
 	ScriptURL string `json:"script_url"`
@@ -359,10 +537,11 @@ type VersionInfo struct {
 
 // DashboardSnapshot holds pre-built data for new dashboard connections
 type DashboardSnapshot struct {
-	InitMessage   []byte                       // Pre-serialized StreamInitMessage
-	ServerMessages [][]byte                    // Pre-serialized StreamServerMessage for each server
-	EndMessage    []byte                       // Pre-serialized StreamEndMessage
-	LastUpdated   time.Time                    // When the snapshot was last updated
+	InitMessage    []byte            // Pre-serialized StreamInitMessage
+	ServerMessages [][]byte          // Pre-serialized StreamServerMessage for each server
+	EndMessage     []byte            // Pre-serialized StreamEndMessage
+	LastUpdated    time.Time         // When the snapshot was last updated
+	ServerHashes   map[string]uint64 // Hash of each server's state to detect changes
 }
 
 // ============================================================================

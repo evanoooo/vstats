@@ -39,11 +39,13 @@ func (s *AppState) Login(c *gin.Context) {
 				s.ConfigMu.Lock()
 				s.Config.AdminPasswordHash = oldHash
 				s.ConfigMu.Unlock()
+				LogAuditError(c, AuditActionLoginFailed, AuditCategoryAuth, "user", "admin", "admin", "Password login attempt", "Invalid password")
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid password"})
 				return
 			}
 			// Success after reload, continue with login
 		} else {
+			LogAuditError(c, AuditActionLoginFailed, AuditCategoryAuth, "user", "admin", "admin", "Password login attempt", "Invalid password")
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid password"})
 			return
 		}
@@ -60,6 +62,8 @@ func (s *AppState) Login(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
 	}
+
+	LogAuditFromContext(c, AuditActionLogin, AuditCategoryAuth, "user", "admin", "admin", "Password login successful")
 
 	c.JSON(http.StatusOK, LoginResponse{
 		Token:     tokenString,
@@ -82,6 +86,7 @@ func (s *AppState) ChangePassword(c *gin.Context) {
 	defer s.ConfigMu.Unlock()
 
 	if err := bcrypt.CompareHashAndPassword([]byte(s.Config.AdminPasswordHash), []byte(req.CurrentPassword)); err != nil {
+		LogAuditError(c, AuditActionPasswordChange, AuditCategoryAuth, "user", "admin", "admin", "Password change attempt", "Invalid current password")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid current password"})
 		return
 	}
@@ -94,5 +99,8 @@ func (s *AppState) ChangePassword(c *gin.Context) {
 
 	s.Config.AdminPasswordHash = string(hash)
 	SaveConfig(s.Config)
+	
+	LogAuditFromContext(c, AuditActionPasswordChange, AuditCategoryAuth, "user", "admin", "admin", "Password changed successfully")
+	
 	c.Status(http.StatusOK)
 }

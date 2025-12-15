@@ -35,6 +35,8 @@ func (s *AppState) UpdateSiteSettings(c *gin.Context) {
 	// Broadcast the updated settings to all connected dashboard clients
 	s.BroadcastSiteSettings(&settings)
 
+	LogAuditFromContext(c, AuditActionSiteSettingsUpdate, AuditCategorySettings, "settings", "site", "Site Settings", "Site settings updated")
+
 	c.Status(http.StatusOK)
 }
 
@@ -82,6 +84,8 @@ func (s *AppState) UpdateLocalNodeConfig(c *gin.Context) {
 	SaveConfig(s.Config)
 	s.ConfigMu.Unlock()
 
+	LogAuditFromContext(c, AuditActionLocalNodeUpdate, AuditCategorySettings, "settings", "local_node", "Local Node", "Local node config updated")
+
 	c.JSON(http.StatusOK, config)
 }
 
@@ -113,6 +117,8 @@ func (s *AppState) UpdateProbeSettings(c *gin.Context) {
 
 	// Broadcast new ping targets to all connected agents
 	s.BroadcastPingTargets(settings.PingTargets)
+
+	LogAuditFromContext(c, AuditActionProbeSettingsUpdate, AuditCategorySettings, "settings", "probe", "Probe Settings", "Probe settings updated")
 
 	c.Status(http.StatusOK)
 }

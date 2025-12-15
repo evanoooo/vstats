@@ -26,3 +26,13 @@ server-go/cmd/cli/cli
 docs-site/deploy/dist
 docs-site/deploy/vstats-cloud
 server-go/cloud
+server-go/server
+server-go/server
+server-go/agent
+site/dist
+site/node_modules
+site/deploy/dist
+site/vitepress/dist
+vstats.db-wal
+*.db-shm
+vstats-cloud-dev

@@ -117,7 +117,7 @@ METRICS_RETENTION_DAYS=30
 
 ```bash
 # 启动 PostgreSQL 和 Redis
-docker compose -f docs-site/deploy/docker-compose.yml up -d postgres redis
+docker compose -f site/deploy/docker-compose.yml up -d postgres redis
 
 # 设置环境变量
 export DATABASE_URL="postgres://vstats:vstats@localhost:5432/vstats_cloud?sslmode=disable"
@@ -142,4 +142,4 @@ docker build -f Dockerfile.cloud -t vstats-cloud .
 
 ## 部署
 
-参考 `docs-site/deploy/` 目录下的 Docker Compose 配置进行部署。
+参考 `site/deploy/` 目录下的 Docker Compose 配置进行部署。

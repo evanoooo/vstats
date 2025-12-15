@@ -20,6 +20,22 @@ const GoogleIcon = () => (
   </svg>
 );
 
+// OIDC Icon SVG
+const OIDCIcon = () => (
+  <svg className="w-5 h-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+  </svg>
+);
+
+// Cloudflare Icon SVG
+const CloudflareIcon = () => (
+  <svg className="w-5 h-5" viewBox="0 0 32 32" fill="none">
+    <path d="M22.6 17.3l1.2-4.1c.1-.3 0-.6-.2-.8-.2-.2-.5-.3-.8-.2l-2.6.7c-.4.1-.7.4-.9.8l-.6 2.1c-.1.3.1.6.4.7l3.5-.2z" fill="#F6821F"/>
+    <path d="M26.2 13.9c-.1-.4-.4-.7-.8-.7h-3.3c-.3 0-.6.2-.7.5l-.6 2c-.1.3.1.6.4.7l4 .3c.4 0 .7-.2.8-.5l.4-1.6c.1-.3 0-.6-.2-.7z" fill="#FBAD41"/>
+    <path d="M8.5 17.5c-.4 0-.8-.3-.8-.7L6 12.5c-.1-.4.1-.8.5-.9l.9-.2c.2-.1.5 0 .6.2.2.2.2.4.1.6l-1 2.9h2.4l.6-2.9c.1-.4.4-.6.8-.6h1c.4 0 .7.3.7.7l-1 4.5c-.1.4-.4.6-.8.6l-2.3.1z" fill="#F6821F"/>
+  </svg>
+);
+
 export default function Login() {
   const { t } = useTranslation();
   const [password, setPassword] = useState('');
@@ -29,7 +45,8 @@ export default function Login() {
   const { login, oauthProviders, startOAuthLogin } = useAuth();
   const navigate = useNavigate();
 
-  const hasOAuthProviders = oauthProviders.github || oauthProviders.google;
+  const hasOAuthProviders = oauthProviders.github || oauthProviders.google || 
+    (oauthProviders.oidc && oauthProviders.oidc.length > 0) || oauthProviders.cloudflare;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,7 +74,7 @@ export default function Login() {
     setLoading(false);
   };
 
-  const handleOAuthLogin = async (provider: 'github' | 'google') => {
+  const handleOAuthLogin = async (provider: string) => {
     setError('');
     setOauthLoading(provider);
     
@@ -141,6 +158,61 @@ export default function Login() {
                           <GoogleIcon />
                           <span>{t('login.loginWithGoogle')}</span>
                           <svg className="w-4 h-4 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-0.5 transition-all ml-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </>
+                      )}
+                    </button>
+                  )}
+
+                  {/* OIDC Providers */}
+                  {oauthProviders.oidc && oauthProviders.oidc.map((oidc) => (
+                    <button
+                      key={oidc.id}
+                      type="button"
+                      onClick={() => handleOAuthLogin(oidc.id)}
+                      disabled={oauthLoading !== null}
+                      className="group w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-purple-900/50 to-purple-800/50 hover:from-purple-800/50 hover:to-purple-700/50 disabled:from-purple-900/30 disabled:to-purple-800/30 border border-purple-700/50 hover:border-purple-600/50 disabled:border-purple-700/30 font-medium transition-all duration-200 flex items-center justify-center gap-3 shadow-lg shadow-purple-900/20 hover:-translate-y-0.5 disabled:cursor-not-allowed"
+                      style={{ color: 'white' }}
+                    >
+                      {oauthLoading === oidc.id ? (
+                        <>
+                          <div 
+                            className="w-5 h-5 border-2 rounded-full animate-spin" 
+                            style={{ borderColor: 'rgba(192, 132, 252, 0.2)', borderTopColor: 'rgb(192, 132, 252)' }}
+                          />
+                          <span className="text-purple-300">{t('login.redirecting')}</span>
+                        </>
+                      ) : (
+                        <>
+                          <OIDCIcon />
+                          <span style={{ color: 'white' }}>{oidc.name || 'SSO'}</span>
+                          <svg className="w-4 h-4 text-purple-400 group-hover:text-purple-300 group-hover:translate-x-0.5 transition-all ml-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </>
+                      )}
+                    </button>
+                  ))}
+
+                  {/* Cloudflare Access */}
+                  {oauthProviders.cloudflare && (
+                    <button
+                      type="button"
+                      onClick={() => handleOAuthLogin('cloudflare')}
+                      disabled={oauthLoading !== null}
+                      className="group w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-orange-500/20 to-orange-400/20 hover:from-orange-500/30 hover:to-orange-400/30 disabled:from-orange-500/10 disabled:to-orange-400/10 border border-orange-500/40 hover:border-orange-400/50 disabled:border-orange-500/20 font-medium transition-all duration-200 flex items-center justify-center gap-3 shadow-lg shadow-orange-500/10 hover:-translate-y-0.5 disabled:cursor-not-allowed"
+                    >
+                      {oauthLoading === 'cloudflare' ? (
+                        <>
+                          <div className="w-5 h-5 border-2 border-orange-300/30 border-t-orange-400 rounded-full animate-spin" />
+                          <span className="text-orange-400">{t('login.redirecting')}</span>
+                        </>
+                      ) : (
+                        <>
+                          <CloudflareIcon />
+                          <span className="text-orange-400">Cloudflare Access</span>
+                          <svg className="w-4 h-4 text-orange-400/70 group-hover:text-orange-400 group-hover:translate-x-0.5 transition-all ml-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                           </svg>
                         </>

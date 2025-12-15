@@ -168,21 +168,25 @@ func (s *AppState) sendInitialStateFresh(client *DashboardClient) {
 		Index: index,
 		Total: totalServers,
 		Server: ServerMetricsUpdate{
-			ServerID:     "local",
-			ServerName:   localName,
-			Location:     localNode.Location,
-			Provider:     provider,
-			Tag:          localNode.Tag,
-			GroupID:      localNode.GroupID,
-			GroupValues:  localNode.GroupValues,
-			Version:      ServerVersion,
-			IP:           "",
-			Online:       true,
-			Metrics:      &localMetrics,
-			PriceAmount:  localNode.PriceAmount,
-			PricePeriod:  localNode.PricePeriod,
-			PurchaseDate: localNode.PurchaseDate,
-			TipBadge:     localNode.TipBadge,
+			ServerID:      "local",
+			ServerName:    localName,
+			Location:      localNode.Location,
+			Provider:      provider,
+			Tag:           localNode.Tag,
+			GroupID:       localNode.GroupID,
+			GroupValues:   localNode.GroupValues,
+			Version:       ServerVersion,
+			IP:            "",
+			Online:        true,
+			Metrics:       &localMetrics,
+			PriceAmount:   localNode.PriceAmount,
+			PricePeriod:   localNode.PricePeriod,
+			PriceCurrency: localNode.PriceCurrency,
+			PurchaseDate:  localNode.PurchaseDate,
+			ExpiryDate:    localNode.ExpiryDate,
+			AutoRenew:     localNode.AutoRenew,
+			TipBadge:      localNode.TipBadge,
+			Notes:         localNode.Notes,
 		},
 	}
 	localData, _ := json.Marshal(localServer)
@@ -207,6 +211,9 @@ func (s *AppState) sendInitialStateFresh(client *DashboardClient) {
 		var metrics *SystemMetrics
 		if metricsData != nil {
 			metrics = &metricsData.Metrics
+		} else if !online {
+			// Server is offline, try to load last metrics from database
+			metrics = GetLastMetrics(server.ID)
 		}
 
 		serverMsg := StreamServerMessage{
@@ -214,21 +221,26 @@ func (s *AppState) sendInitialStateFresh(client *DashboardClient) {
 			Index: index,
 			Total: totalServers,
 			Server: ServerMetricsUpdate{
-				ServerID:     server.ID,
-				ServerName:   server.Name,
-				Location:     server.Location,
-				Provider:     server.Provider,
-				Tag:          server.Tag,
-				GroupID:      server.GroupID,
-				GroupValues:  server.GroupValues,
-				Version:      version,
-				IP:           server.IP,
-				Online:       online,
-				Metrics:      metrics,
-				PriceAmount:  server.PriceAmount,
-				PricePeriod:  server.PricePeriod,
-				PurchaseDate: server.PurchaseDate,
-				TipBadge:     server.TipBadge,
+				ServerID:      server.ID,
+				ServerName:    server.Name,
+				Location:      server.Location,
+				Provider:      server.Provider,
+				Tag:           server.Tag,
+				GroupID:       server.GroupID,
+				GroupValues:   server.GroupValues,
+				Version:       version,
+				IP:            server.IP,
+				Online:        online,
+				Metrics:       metrics,
+				PriceAmount:   server.PriceAmount,
+				PricePeriod:   server.PricePeriod,
+				PriceCurrency: server.PriceCurrency,
+				PurchaseDate:  server.PurchaseDate,
+				ExpiryDate:    server.ExpiryDate,
+				AutoRenew:     server.AutoRenew,
+				TipBadge:      server.TipBadge,
+				Notes:         server.Notes,
+				GeoIP:         server.GeoIP,
 			},
 		}
 		serverData, _ := json.Marshal(serverMsg)
@@ -244,7 +256,7 @@ func (s *AppState) sendInitialStateFresh(client *DashboardClient) {
 	writeMessage(endData)
 }
 
-// RefreshSnapshot rebuilds the dashboard snapshot (called periodically)
+// RefreshSnapshot rebuilds the dashboard snapshot (called at startup)
 func (s *AppState) RefreshSnapshot() {
 	s.ConfigMu.RLock()
 	config := s.Config
@@ -257,13 +269,48 @@ func (s *AppState) RefreshSnapshot() {
 	}
 	s.AgentMetricsMu.RUnlock()
 
+	localMetrics := CollectMetrics()
+	s.RefreshSnapshotWithData(config, agentMetrics, &localMetrics)
+}
+
+// serverStateHash computes a simple hash for change detection
+func serverStateHash(online bool, metrics *SystemMetrics) uint64 {
+	h := uint64(0)
+	if online {
+		h = 1
+	}
+	if metrics != nil {
+		// Use key metrics fields for hash
+		h ^= uint64(metrics.CPU.Usage*1000) << 8
+		h ^= uint64(metrics.Memory.UsagePercent*1000) << 16
+		h ^= metrics.Network.TotalRx >> 20 << 24
+		h ^= metrics.Network.TotalTx >> 20 << 32
+		h ^= uint64(metrics.Timestamp.Unix()) << 40
+	}
+	return h
+}
+
+// RefreshSnapshotWithData rebuilds snapshot using pre-collected data (incremental update)
+func (s *AppState) RefreshSnapshotWithData(config *AppConfig, agentMetrics map[string]*AgentMetricsData, localMetrics *SystemMetrics) {
 	totalServers := 1 + len(config.Servers)
+
+	// Get existing snapshot for incremental update
+	s.SnapshotMu.RLock()
+	oldSnapshot := s.Snapshot
+	s.SnapshotMu.RUnlock()
+
+	// Check if we can do incremental update
+	canIncremental := oldSnapshot != nil &&
+		len(oldSnapshot.ServerMessages) == totalServers &&
+		oldSnapshot.ServerHashes != nil
+
 	snapshot := &DashboardSnapshot{
-		ServerMessages: make([][]byte, 0, totalServers),
+		ServerMessages: make([][]byte, totalServers),
+		ServerHashes:   make(map[string]uint64, totalServers),
 		LastUpdated:    time.Now(),
 	}
 
-	// Build init message
+	// Build init message (usually doesn't change, but rebuild for safety)
 	initMsg := StreamInitMessage{
 		Type:            "stream_init",
 		TotalServers:    totalServers,
@@ -274,7 +321,6 @@ func (s *AppState) RefreshSnapshot() {
 	snapshot.InitMessage, _ = json.Marshal(initMsg)
 
 	// Build local server message
-	localMetrics := CollectMetrics()
 	localNode := config.LocalNode
 	localName := "Dashboard Server"
 	if localNode.Name != "" {
@@ -285,48 +331,71 @@ func (s *AppState) RefreshSnapshot() {
 		provider = localNode.Provider
 	}
 
-	localServer := StreamServerMessage{
-		Type:  "stream_server",
-		Index: 0,
-		Total: totalServers,
-		Server: ServerMetricsUpdate{
-			ServerID:     "local",
-			ServerName:   localName,
-			Location:     localNode.Location,
-			Provider:     provider,
-			Tag:          localNode.Tag,
-			GroupID:      localNode.GroupID,
-			GroupValues:  localNode.GroupValues,
-			Version:      ServerVersion,
-			IP:           "",
-			Online:       true,
-			Metrics:      &localMetrics,
-			PriceAmount:  localNode.PriceAmount,
-			PricePeriod:  localNode.PricePeriod,
-			PurchaseDate: localNode.PurchaseDate,
-			TipBadge:     localNode.TipBadge,
-		},
+	localHash := serverStateHash(true, localMetrics)
+	if canIncremental && oldSnapshot.ServerHashes["local"] == localHash {
+		// Reuse old serialized data
+		snapshot.ServerMessages[0] = oldSnapshot.ServerMessages[0]
+	} else {
+		localServer := StreamServerMessage{
+			Type:  "stream_server",
+			Index: 0,
+			Total: totalServers,
+			Server: ServerMetricsUpdate{
+				ServerID:      "local",
+				ServerName:    localName,
+				Location:      localNode.Location,
+				Provider:      provider,
+				Tag:           localNode.Tag,
+				GroupID:       localNode.GroupID,
+				GroupValues:   localNode.GroupValues,
+				Version:       ServerVersion,
+				IP:            "",
+				Online:        true,
+				Metrics:       localMetrics,
+				PriceAmount:   localNode.PriceAmount,
+				PricePeriod:   localNode.PricePeriod,
+				PriceCurrency: localNode.PriceCurrency,
+				PurchaseDate:  localNode.PurchaseDate,
+				ExpiryDate:    localNode.ExpiryDate,
+				AutoRenew:     localNode.AutoRenew,
+				TipBadge:      localNode.TipBadge,
+				Notes:         localNode.Notes,
+			},
+		}
+		snapshot.ServerMessages[0], _ = json.Marshal(localServer)
 	}
-	localData, _ := json.Marshal(localServer)
-	snapshot.ServerMessages = append(snapshot.ServerMessages, localData)
+	snapshot.ServerHashes["local"] = localHash
 
-	// Build remote server messages
-	index := 1
-	for _, server := range config.Servers {
+	// Build remote server messages (incremental)
+	for i, server := range config.Servers {
+		index := i + 1
 		metricsData := agentMetrics[server.ID]
 		online := false
 		if metricsData != nil {
 			online = time.Since(metricsData.LastUpdated).Seconds() < 30
 		}
 
-		version := server.Version
-		if metricsData != nil && metricsData.Metrics.Version != "" {
-			version = metricsData.Metrics.Version
-		}
-
 		var metrics *SystemMetrics
 		if metricsData != nil {
 			metrics = &metricsData.Metrics
+		} else if !online {
+			// Server is offline, try to load last metrics from database
+			metrics = GetLastMetrics(server.ID)
+		}
+
+		currentHash := serverStateHash(online, metrics)
+
+		// Check if we can reuse old serialized data
+		if canIncremental && oldSnapshot.ServerHashes[server.ID] == currentHash {
+			snapshot.ServerMessages[index] = oldSnapshot.ServerMessages[index]
+			snapshot.ServerHashes[server.ID] = currentHash
+			continue
+		}
+
+		// Need to re-serialize
+		version := server.Version
+		if metricsData != nil && metricsData.Metrics.Version != "" {
+			version = metricsData.Metrics.Version
 		}
 
 		serverMsg := StreamServerMessage{
@@ -334,26 +403,30 @@ func (s *AppState) RefreshSnapshot() {
 			Index: index,
 			Total: totalServers,
 			Server: ServerMetricsUpdate{
-				ServerID:     server.ID,
-				ServerName:   server.Name,
-				Location:     server.Location,
-				Provider:     server.Provider,
-				Tag:          server.Tag,
-				GroupID:      server.GroupID,
-				GroupValues:  server.GroupValues,
-				Version:      version,
-				IP:           server.IP,
-				Online:       online,
-				Metrics:      metrics,
-				PriceAmount:  server.PriceAmount,
-				PricePeriod:  server.PricePeriod,
-				PurchaseDate: server.PurchaseDate,
-				TipBadge:     server.TipBadge,
+				ServerID:      server.ID,
+				ServerName:    server.Name,
+				Location:      server.Location,
+				Provider:      server.Provider,
+				Tag:           server.Tag,
+				GroupID:       server.GroupID,
+				GroupValues:   server.GroupValues,
+				Version:       version,
+				IP:            server.IP,
+				Online:        online,
+				Metrics:       metrics,
+				PriceAmount:   server.PriceAmount,
+				PricePeriod:   server.PricePeriod,
+				PriceCurrency: server.PriceCurrency,
+				PurchaseDate:  server.PurchaseDate,
+				ExpiryDate:    server.ExpiryDate,
+				AutoRenew:     server.AutoRenew,
+				TipBadge:      server.TipBadge,
+				Notes:         server.Notes,
+				GeoIP:         server.GeoIP,
 			},
 		}
-		serverData, _ := json.Marshal(serverMsg)
-		snapshot.ServerMessages = append(snapshot.ServerMessages, serverData)
-		index++
+		snapshot.ServerMessages[index], _ = json.Marshal(serverMsg)
+		snapshot.ServerHashes[server.ID] = currentHash
 	}
 
 	// Build end message
@@ -519,6 +592,32 @@ func (s *AppState) HandleAgentWS(c *gin.Context) {
 						if s.Config.Servers[i].IP != agentIP {
 							s.Config.Servers[i].IP = agentIP
 							changed = true
+							// Perform GeoIP lookup for new IP
+							go func(serverID, ip string) {
+								service := GetGeoIPService()
+								result, err := service.Lookup(ip)
+								if err != nil {
+									return
+								}
+								s.ConfigMu.Lock()
+								defer s.ConfigMu.Unlock()
+								for j := range s.Config.Servers {
+									if s.Config.Servers[j].ID == serverID {
+										s.Config.Servers[j].Location = result.CountryCode
+										s.Config.Servers[j].GeoIP = &ServerGeoIP{
+											CountryCode: result.CountryCode,
+											CountryName: result.CountryName,
+											City:        result.City,
+											Region:      result.Region,
+											Latitude:    result.Latitude,
+											Longitude:   result.Longitude,
+											UpdatedAt:   time.Now().Format(time.RFC3339),
+										}
+										SaveConfig(s.Config)
+										break
+									}
+								}
+							}(authenticatedServerID, agentIP)
 						}
 						if changed {
 							SaveConfig(s.Config)

@@ -25,25 +25,31 @@ func (s *AppState) AddServer(c *gin.Context) {
 	}
 
 	server := RemoteServer{
-		ID:           uuid.New().String(),
-		Name:         req.Name,
-		URL:          req.URL,
-		Location:     req.Location,
-		Provider:     req.Provider,
-		Tag:          req.Tag,
-		Token:        uuid.New().String(),
-		GroupID:      req.GroupID,
-		GroupValues:  req.GroupValues,
-		PriceAmount:  req.PriceAmount,
-		PricePeriod:  req.PricePeriod,
-		PurchaseDate: req.PurchaseDate,
-		TipBadge:     req.TipBadge,
+		ID:            uuid.New().String(),
+		Name:          req.Name,
+		URL:           req.URL,
+		Location:      req.Location,
+		Provider:      req.Provider,
+		Tag:           req.Tag,
+		Token:         uuid.New().String(),
+		GroupID:       req.GroupID,
+		GroupValues:   req.GroupValues,
+		PriceAmount:   req.PriceAmount,
+		PricePeriod:   req.PricePeriod,
+		PriceCurrency: req.PriceCurrency,
+		PurchaseDate:  req.PurchaseDate,
+		ExpiryDate:    req.ExpiryDate,
+		AutoRenew:     req.AutoRenew,
+		TipBadge:      req.TipBadge,
+		Notes:         req.Notes,
 	}
 
 	s.ConfigMu.Lock()
 	s.Config.Servers = append(s.Config.Servers, server)
 	SaveConfig(s.Config)
 	s.ConfigMu.Unlock()
+
+	LogAuditFromContext(c, AuditActionServerCreate, AuditCategoryServer, "server", server.ID, server.Name, "Server created")
 
 	c.JSON(http.StatusOK, server)
 }
@@ -52,10 +58,13 @@ func (s *AppState) DeleteServer(c *gin.Context) {
 	id := c.Param("id")
 
 	s.ConfigMu.Lock()
+	var deletedName string
 	servers := make([]RemoteServer, 0)
 	for _, srv := range s.Config.Servers {
 		if srv.ID != id {
 			servers = append(servers, srv)
+		} else {
+			deletedName = srv.Name
 		}
 	}
 	s.Config.Servers = servers
@@ -65,6 +74,8 @@ func (s *AppState) DeleteServer(c *gin.Context) {
 	s.AgentMetricsMu.Lock()
 	delete(s.AgentMetrics, id)
 	s.AgentMetricsMu.Unlock()
+
+	LogAuditFromContext(c, AuditActionServerDelete, AuditCategoryServer, "server", id, deletedName, "Server deleted")
 
 	c.Status(http.StatusOK)
 }
@@ -102,20 +113,32 @@ func (s *AppState) UpdateServer(c *gin.Context) {
 			if req.GroupValues != nil {
 				s.Config.Servers[i].GroupValues = *req.GroupValues
 			}
-			if req.PriceAmount != nil {
-				s.Config.Servers[i].PriceAmount = *req.PriceAmount
-			}
-			if req.PricePeriod != nil {
-				s.Config.Servers[i].PricePeriod = *req.PricePeriod
-			}
-			if req.PurchaseDate != nil {
-				s.Config.Servers[i].PurchaseDate = *req.PurchaseDate
-			}
-			if req.TipBadge != nil {
-				s.Config.Servers[i].TipBadge = *req.TipBadge
-			}
-			updated = &s.Config.Servers[i]
-			break
+		if req.PriceAmount != nil {
+			s.Config.Servers[i].PriceAmount = *req.PriceAmount
+		}
+		if req.PricePeriod != nil {
+			s.Config.Servers[i].PricePeriod = *req.PricePeriod
+		}
+		if req.PriceCurrency != nil {
+			s.Config.Servers[i].PriceCurrency = *req.PriceCurrency
+		}
+		if req.PurchaseDate != nil {
+			s.Config.Servers[i].PurchaseDate = *req.PurchaseDate
+		}
+		if req.ExpiryDate != nil {
+			s.Config.Servers[i].ExpiryDate = *req.ExpiryDate
+		}
+		if req.AutoRenew != nil {
+			s.Config.Servers[i].AutoRenew = *req.AutoRenew
+		}
+		if req.TipBadge != nil {
+			s.Config.Servers[i].TipBadge = *req.TipBadge
+		}
+		if req.Notes != nil {
+			s.Config.Servers[i].Notes = *req.Notes
+		}
+		updated = &s.Config.Servers[i]
+		break
 		}
 	}
 
@@ -125,6 +148,9 @@ func (s *AppState) UpdateServer(c *gin.Context) {
 	}
 
 	SaveConfig(s.Config)
+	
+	LogAuditFromContext(c, AuditActionServerUpdate, AuditCategoryServer, "server", id, updated.Name, "Server updated")
+
 	c.JSON(http.StatusOK, updated)
 }
 

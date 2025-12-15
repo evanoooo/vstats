@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
-import type { SystemMetrics, SiteSettings, ServerGroup, GroupDimension } from '../types';
+import type { SystemMetrics, SiteSettings, ServerGroup, GroupDimension, GeoIPData } from '../types';
 import { sanitizeSiteSettings } from '../utils/security';
 
 // Types
@@ -21,10 +21,15 @@ export interface ServerConfig {
   price?: {
     amount: string;
     period: 'month' | 'year';
+    currency?: string;
   };
   purchase_date?: string;
+  expiry_date?: string;
+  auto_renew?: boolean;
   remaining_value?: string;
   tip_badge?: string;
+  notes?: string;
+  geoip?: GeoIPData;
 }
 
 export interface ServerState {
@@ -98,8 +103,13 @@ interface ServerMetricsUpdate {
   metrics: SystemMetrics | null;
   price_amount?: string;
   price_period?: string;
+  price_currency?: string;
   purchase_date?: string;
+  expiry_date?: string;
+  auto_renew?: boolean;
   tip_badge?: string;
+  notes?: string;
+  geoip?: GeoIPData;
 }
 
 // Context interface
@@ -311,9 +321,14 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
                     price: serverUpdate.price_amount ? {
                       amount: serverUpdate.price_amount,
                       period: (serverUpdate.price_period as 'month' | 'year') || 'month',
+                      currency: serverUpdate.price_currency,
                     } : undefined,
                     purchase_date: serverUpdate.purchase_date,
+                    expiry_date: serverUpdate.expiry_date,
+                    auto_renew: serverUpdate.auto_renew,
                     tip_badge: serverUpdate.tip_badge,
+                    notes: serverUpdate.notes,
+                    geoip: serverUpdate.geoip,
                   },
                   metrics: metricsToUse,
                   speed: newSpeed,
@@ -445,9 +460,14 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
                   price: serverUpdate.price_amount ? {
                     amount: serverUpdate.price_amount,
                     period: (serverUpdate.price_period as 'month' | 'year') || 'month',
+                    currency: serverUpdate.price_currency,
                   } : undefined,
                   purchase_date: serverUpdate.purchase_date,
+                  expiry_date: serverUpdate.expiry_date,
+                  auto_renew: serverUpdate.auto_renew,
                   tip_badge: serverUpdate.tip_badge,
+                  notes: serverUpdate.notes,
+                  geoip: serverUpdate.geoip,
                 },
                 metrics: metricsToUse,
                 speed: newSpeed,

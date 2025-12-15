@@ -11,7 +11,7 @@
    - 构建 Web 前端
    - 创建 GitHub Release
 
-2. **Main 分支推送**：当 `server-go/`、`web/`、`docs-site/` 或 `docs/` 目录有更改时
+2. **Main 分支推送**：当 `server-go/`、`web/`、`site/` 或 `docs/` 目录有更改时
    - 构建对应的组件（Go 二进制文件、Web 前端或文档站点）
 
 3. **手动触发**：在 GitHub Actions 页面手动运行，需要提供版本号
@@ -87,7 +87,7 @@
 
 ### 文档站点部署
 
-文档站点（docs-site）使用独立的部署工作流 `deploy-docs-site.yml`：
+文档站点（site）使用独立的部署工作流 `deploy-site.yml`：
 - 使用 Docker Compose + Nginx 部署
 - 编译后的静态文件通过 Nginx 提供服务
 - 支持自动部署到服务器

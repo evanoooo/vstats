@@ -17,6 +17,7 @@ type SystemMetrics struct {
 	Uptime      uint64         `json:"uptime"`
 	LoadAverage LoadAverage    `json:"load_average"`
 	Ping        *PingMetrics   `json:"ping,omitempty"`
+	GPU         *GPUMetrics    `json:"gpu,omitempty"`
 	Version     string         `json:"version,omitempty"`
 	IPAddresses []string       `json:"ip_addresses,omitempty"`
 }
@@ -91,6 +92,35 @@ type LoadAverage struct {
 	One     float64 `json:"one"`
 	Five    float64 `json:"five"`
 	Fifteen float64 `json:"fifteen"`
+}
+
+// ============================================================================
+// GPU Metrics Types
+// ============================================================================
+
+type GPUMetrics struct {
+	GPUs []GPU `json:"gpus,omitempty"`
+}
+
+type GPU struct {
+	Index           int     `json:"index"`                      // GPU index
+	Name            string  `json:"name"`                       // GPU model name
+	Vendor          string  `json:"vendor"`                     // "NVIDIA", "AMD", "Intel"
+	MemoryTotal     uint64  `json:"memory_total"`               // Total VRAM in bytes
+	MemoryUsed      uint64  `json:"memory_used"`                // Used VRAM in bytes
+	MemoryPercent   float32 `json:"memory_percent"`             // VRAM usage percentage
+	Utilization     float32 `json:"utilization"`                // GPU core utilization percentage
+	Temperature     int     `json:"temperature,omitempty"`      // Temperature in Celsius
+	FanSpeed        int     `json:"fan_speed,omitempty"`        // Fan speed percentage (0-100)
+	PowerDraw       float32 `json:"power_draw,omitempty"`       // Current power draw in Watts
+	PowerLimit      float32 `json:"power_limit,omitempty"`      // Power limit in Watts
+	ClockCore       uint32  `json:"clock_core,omitempty"`       // Current core clock in MHz
+	ClockMemory     uint32  `json:"clock_memory,omitempty"`     // Current memory clock in MHz
+	DriverVersion   string  `json:"driver_version,omitempty"`   // GPU driver version
+	CUDAVersion     string  `json:"cuda_version,omitempty"`     // CUDA version (NVIDIA only)
+	PCIBus          string  `json:"pci_bus,omitempty"`          // PCI bus ID
+	EncoderUtil     float32 `json:"encoder_util,omitempty"`     // Video encoder utilization
+	DecoderUtil     float32 `json:"decoder_util,omitempty"`     // Video decoder utilization
 }
 
 type PingMetrics struct {

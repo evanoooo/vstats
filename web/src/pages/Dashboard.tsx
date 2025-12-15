@@ -136,6 +136,41 @@ const formatLatency = (ms: number | null): string => {
   return `${ms.toFixed(1)}ms`;
 };
 
+// Calculate days until expiry
+const calculateDaysUntilExpiry = (expiryDate?: string): number | null => {
+  if (!expiryDate) return null;
+  
+  try {
+    const expiry = new Date(expiryDate);
+    const now = new Date();
+    const diffTime = expiry.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  } catch {
+    return null;
+  }
+};
+
+// Get expiry status class based on days left
+const getExpiryStatusClass = (daysLeft: number | null): string => {
+  if (daysLeft === null) return '';
+  if (daysLeft < 0) return 'text-red-500';
+  if (daysLeft <= 7) return 'text-red-400';
+  if (daysLeft <= 30) return 'text-amber-400';
+  return 'text-gray-400';
+};
+
+// Format expiry display
+const formatExpiryDisplay = (daysLeft: number | null, autoRenew?: boolean): string => {
+  if (daysLeft === null) return '';
+  if (daysLeft < 0) return autoRenew ? `已过期 ${Math.abs(daysLeft)}天` : `过期 ${Math.abs(daysLeft)}天`;
+  if (daysLeft === 0) return '今天到期';
+  if (daysLeft === 1) return '明天到期';
+  if (daysLeft <= 7) return `${daysLeft}天后到期`;
+  if (daysLeft <= 30) return `${daysLeft}天`;
+  return `${daysLeft}天`;
+};
+
 // Calculate remaining value based on price and purchase date
 const calculateRemainingValue = (price?: { amount: string; period: 'month' | 'year' }, purchaseDate?: string): string | null => {
   if (!price || !purchaseDate) return null;
@@ -216,31 +251,54 @@ function VpsGridCard({ server, onClick, isDark }: { server: ServerState; onClick
   const { metrics, speed, isConnected, config } = server;
   const themeClass = isDark ? 'dark' : 'light';
   
-  const OsIcon = metrics ? getOsIcon(metrics.os.name) : null;
-  const distributionLogo = metrics ? getDistributionLogo(metrics.os.name) : null;
+  // Check if metrics data is complete (has all required fields)
+  const hasCompleteMetrics = metrics && metrics.os && metrics.os.name && metrics.cpu && metrics.memory;
+  
+  const OsIcon = hasCompleteMetrics ? getOsIcon(metrics.os.name) : null;
+  const distributionLogo = hasCompleteMetrics ? getDistributionLogo(metrics.os.name) : null;
   const providerLogo = config.provider ? getProviderLogo(config.provider) : null;
   const flag = getFlag(config.location);
 
-  if (!metrics) {
+  if (!hasCompleteMetrics) {
+    // Server has never reported data - show offline placeholder with server info
     return (
-      <div className={`vps-card vps-card--${themeClass} animate-pulse cursor-pointer`} onClick={onClick}>
-        <div className="vps-card-header">
+      <div className={`vps-card vps-card--${themeClass} cursor-pointer relative`} onClick={onClick}>
+        {/* Offline Banner */}
+        <div className="absolute top-0 left-0 right-0 bg-red-500/90 text-white text-xs font-medium py-1 px-3 rounded-t-2xl flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+          {t('dashboard.offline') || '离线'}
+        </div>
+        <div className="vps-card-header pt-6">
           <div className="vps-card-identity">
             <div className={`vps-card-avatar vps-card-avatar--${themeClass}`}>
-              <div className="w-6 h-6 skeleton-bg rounded" />
+              {providerLogo ? (
+                <LogoImage src={providerLogo} alt={config.provider || ''} className="w-6 h-6 object-contain opacity-50" />
+              ) : flag ? (
+                <span className="text-lg opacity-50">{flag}</span>
+              ) : (
+                <span className="text-lg opacity-50">🖥️</span>
+              )}
             </div>
             <div className="vps-card-info">
-              <div className="h-4 skeleton-bg rounded w-3/4 mb-2" />
-              <div className="h-3 skeleton-bg rounded w-1/2" />
+              <div className={`vps-card-title vps-card-title--${themeClass}`}>
+                {config.name}
+              </div>
+              <div className="vps-card-meta">
+                {flag && (
+                  <span className={`vps-location vps-location--${themeClass}`}>
+                    <span className="text-base">{flag}</span>
+                    <span>{config.location}</span>
+                  </span>
+                )}
+              </div>
             </div>
           </div>
+          <span className={`vps-chip vps-chip--stopped-${themeClass}`}>
+            <span className="vps-chip-dot vps-chip-dot--stopped" />
+          </span>
         </div>
-        <div className="space-y-3 mt-4">
-          {[1, 2, 3, 4].map(i => (
-            <div key={i} className="vps-resource-row">
-              <div className="h-3 skeleton-bg rounded w-full" />
-            </div>
-          ))}
+        <div className={`flex items-center justify-center py-8 text-sm ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+          {t('dashboard.noData') || '暂无数据'}
         </div>
       </div>
     );
@@ -320,13 +378,21 @@ function VpsGridCard({ server, onClick, isDark }: { server: ServerState; onClick
 
   return (
     <div className={`vps-card vps-card--${themeClass} group cursor-pointer relative`} onClick={onClick}>
+      {/* Offline Banner - shown when server has metrics but is offline */}
+      {!isConnected && (
+        <div className="absolute top-0 left-0 right-0 bg-red-500/90 text-white text-xs font-medium py-1 px-3 rounded-t-2xl flex items-center gap-1.5 z-10">
+          <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+          {t('dashboard.offline') || '离线'}
+        </div>
+      )}
+      
       {/* Tip Badge */}
       {tipBadgeClass && tipBadgeLabel && (
         <div className={`vps-tip-badge ${tipBadgeClass}`}>{tipBadgeLabel}</div>
       )}
 
       {/* Header */}
-      <div className="vps-card-header">
+      <div className={`vps-card-header ${!isConnected ? 'pt-6' : ''}`}>
         <div className="vps-card-identity">
           <div className={`vps-card-avatar vps-card-avatar--${themeClass}`}>
             {distributionLogo ? (
@@ -392,12 +458,13 @@ function VpsGridCard({ server, onClick, isDark }: { server: ServerState; onClick
 
       {/* Footer */}
       <div className={`vps-card-footer vps-card-footer--${themeClass}`}>
-        {(config.price || config.purchase_date) && (
+        {(config.price || config.purchase_date || config.expiry_date) && (
           <div className="vps-footer-row-price">
             {config.price && (
               <div className={`vps-price vps-price--${themeClass}`}>
                 <span className="vps-price-amount">{formatPrice(config.price.amount)}</span>
                 <span className="vps-price-period">/{config.price.period === 'month' ? '月' : '年'}</span>
+                {config.auto_renew && <span className="ml-1 text-xs text-emerald-400" title="自动续费">↻</span>}
               </div>
             )}
             {remainingValue && (
@@ -406,7 +473,19 @@ function VpsGridCard({ server, onClick, isDark }: { server: ServerState; onClick
                 <span className="vps-footer-info-value">{remainingValue}</span>
               </div>
             )}
-            {config.purchase_date && (
+            {config.expiry_date && (() => {
+              const daysLeft = calculateDaysUntilExpiry(config.expiry_date);
+              const statusClass = getExpiryStatusClass(daysLeft);
+              return (
+                <div className={`vps-footer-info-item vps-footer-info-item--${themeClass}`}>
+                  <span className="vps-footer-info-label">到期</span>
+                  <span className={`vps-footer-info-value ${statusClass}`}>
+                    {formatExpiryDisplay(daysLeft, config.auto_renew)}
+                  </span>
+                </div>
+              );
+            })()}
+            {config.purchase_date && !config.expiry_date && (
               <div className={`vps-footer-info-item vps-footer-info-item--${themeClass}`}>
                 <span className="vps-footer-info-label">购买</span>
                 <span className="vps-footer-info-value">{formatPurchaseDate(config.purchase_date)}</span>
@@ -443,22 +522,40 @@ function VpsListCard({ server, onClick, isDark }: { server: ServerState; onClick
   const { metrics, speed, isConnected, config } = server;
   const themeClass = isDark ? 'dark' : 'light';
   
-  const OsIcon = metrics ? getOsIcon(metrics.os.name) : null;
+  // Check if metrics data is complete (has all required fields)
+  const hasCompleteMetrics = metrics && metrics.os && metrics.os.name && metrics.cpu && metrics.memory;
+  
+  const OsIcon = hasCompleteMetrics ? getOsIcon(metrics.os.name) : null;
   const providerLogo = config.provider ? getProviderLogo(config.provider) : null;
-  const distributionLogo = metrics ? getDistributionLogo(metrics.os.name) : null;
+  const distributionLogo = hasCompleteMetrics ? getDistributionLogo(metrics.os.name) : null;
   const flag = getFlag(config.location);
 
-  if (!metrics) {
+  if (!hasCompleteMetrics) {
+    // Server has never reported data - show offline placeholder with server info
     return (
-      <div className={`vps-list-card vps-list-card--${themeClass} animate-pulse cursor-pointer`} onClick={onClick}>
+      <div className={`vps-list-card vps-list-card--${themeClass} cursor-pointer relative`} onClick={onClick}>
+        {/* Offline indicator */}
+        <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-500 rounded-l-2xl" />
         <div className={`vps-card-avatar vps-card-avatar--${themeClass}`}>
-          <div className="w-6 h-6 skeleton-bg rounded" />
+          {providerLogo ? (
+            <LogoImage src={providerLogo} alt={config.provider || ''} className="w-6 h-6 object-contain opacity-50" />
+          ) : flag ? (
+            <span className="text-lg opacity-50">{flag}</span>
+          ) : (
+            <span className="text-lg opacity-50">🖥️</span>
+          )}
         </div>
         <div className="flex-1">
-          <div className="h-4 skeleton-bg rounded w-32 mb-2" />
-          <div className="h-3 skeleton-bg rounded w-24" />
+          <div className={`font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{config.name}</div>
+          <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+            {flag && <span className="mr-1">{flag}</span>}
+            {config.location}
+          </div>
         </div>
-        <div className={`text-sm ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>{t('common.connecting')}</div>
+        <div className="flex items-center gap-2">
+          <span className="vps-chip-dot vps-chip-dot--stopped" />
+          <span className={`text-sm font-medium text-red-500`}>{t('dashboard.offline') || '离线'}</span>
+        </div>
       </div>
     );
   }
@@ -537,6 +634,11 @@ function VpsListCard({ server, onClick, isDark }: { server: ServerState; onClick
       className={`vps-list-card vps-list-card--${themeClass} cursor-pointer group relative overflow-hidden`}
       onClick={onClick}
     >
+      {/* Offline indicator - red left border */}
+      {!isConnected && (
+        <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-500 rounded-l-2xl" />
+      )}
+      
       {/* List Tip Badge */}
       {tipBadgeClass && tipBadgeLabel && (
         <div className={`vps-list-tip-badge ${tipBadgeClass}`}>{tipBadgeLabel}</div>
@@ -555,6 +657,9 @@ function VpsListCard({ server, onClick, isDark }: { server: ServerState; onClick
           <div className={`vps-list-title vps-list-title--${themeClass}`}>
             {config.name}
             <span className={`vps-chip-dot ${isConnected ? 'vps-chip-dot--running' : 'vps-chip-dot--stopped'}`} />
+            {!isConnected && (
+              <span className="ml-1 text-xs font-medium text-red-500">{t('dashboard.offline') || '离线'}</span>
+            )}
           </div>
           <div className="vps-list-meta">
             {flag && (
@@ -607,12 +712,13 @@ function VpsListCard({ server, onClick, isDark }: { server: ServerState; onClick
 
       {/* Column 3: Footer */}
       <div className={`vps-list-footer vps-list-footer--${themeClass}`}>
-        {(config.price || config.purchase_date) && (
+        {(config.price || config.purchase_date || config.expiry_date) && (
           <div className="vps-footer-row-price">
             {config.price && (
               <div className={`vps-price vps-price--${themeClass}`}>
                 <span className="vps-price-amount">{formatPrice(config.price.amount)}</span>
                 <span className="vps-price-period">{config.price.period === 'month' ? t('dashboard.perMonth') : t('dashboard.perYear')}</span>
+                {config.auto_renew && <span className="ml-1 text-xs text-emerald-400" title={t('dashboard.autoRenew') || '自动续费'}>↻</span>}
               </div>
             )}
             {remainingValue && (
@@ -621,7 +727,19 @@ function VpsListCard({ server, onClick, isDark }: { server: ServerState; onClick
                 <span className="vps-footer-info-value">{remainingValue}</span>
               </div>
             )}
-            {config.purchase_date && (
+            {config.expiry_date && (() => {
+              const daysLeft = calculateDaysUntilExpiry(config.expiry_date);
+              const statusClass = getExpiryStatusClass(daysLeft);
+              return (
+                <div className={`vps-footer-info-item vps-footer-info-item--${themeClass}`}>
+                  <span className="vps-footer-info-label">{t('dashboard.expiry') || '到期'}</span>
+                  <span className={`vps-footer-info-value ${statusClass}`}>
+                    {formatExpiryDisplay(daysLeft, config.auto_renew)}
+                  </span>
+                </div>
+              );
+            })()}
+            {config.purchase_date && !config.expiry_date && (
               <div className={`vps-footer-info-item vps-footer-info-item--${themeClass}`}>
                 <span className="vps-footer-info-label">{t('dashboard.purchased')}</span>
                 <span className="vps-footer-info-value">{formatPurchaseDate(config.purchase_date)}</span>
@@ -700,39 +818,68 @@ function VpsCompactCard({ server, onClick, themeId }: {
   
   const flag = getFlag(config.location);
 
-  if (!metrics) {
+  // Check if metrics data is complete (has all required fields)
+  const hasCompleteMetrics = metrics && metrics.os && metrics.os.name && metrics.cpu && metrics.memory;
+
+  if (!hasCompleteMetrics) {
+    // Server has never reported data - show offline row with server info
     return (
-      <div className={`vps-compact-row vps-compact-row--${themeId} animate-pulse`} onClick={onClick}>
+      <div className={`vps-compact-row vps-compact-row--${themeId}`} onClick={onClick}>
+        {/* NODE */}
         <div className="vps-compact-col vps-compact-col--node">
-          <div className="flex items-center gap-2.5">
-            <div className="w-2 h-2 skeleton-bg rounded-full" />
-            <div className="w-9 h-9 skeleton-bg rounded-xl" />
-            <div className="space-y-1">
-              <div className="h-3.5 skeleton-bg rounded w-20" />
-              <div className="h-3 skeleton-bg rounded w-14" />
-            </div>
+          <span className="vps-compact-status is-offline" style={{ background: '#ef4444' }} />
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-white/5 border border-red-500/30">
+            {flag ? (
+              <span className="text-xl opacity-50">{flag}</span>
+            ) : (
+              <span className="text-xl opacity-50">🖥️</span>
+            )}
+          </div>
+          <div className="vps-compact-node-info">
+            <span className={`vps-compact-node-name vps-compact-node-name--${themeId}`}>
+              {config.name}
+            </span>
+            <span className="text-xs text-red-500 font-medium">
+              {t('dashboard.offline') || '离线'}
+            </span>
           </div>
         </div>
-        <div className="vps-compact-col vps-compact-col--type">
-          <div className="h-3 skeleton-bg rounded w-16" />
+        {/* TYPE */}
+        <div className={`vps-compact-col vps-compact-col--type text-gray-500`}>
+          {config.tag || '-'}
         </div>
-        <div className="vps-compact-col vps-compact-col--uptime">
-          <div className="h-3 skeleton-bg rounded w-14" />
+        {/* UPTIME */}
+        <div className={`vps-compact-col vps-compact-col--uptime text-gray-500`}>
+          -
         </div>
-        <div className="vps-compact-col vps-compact-col--network">
-          <div className="h-3 skeleton-bg rounded w-20" />
+        {/* NETWORK */}
+        <div className={`vps-compact-col vps-compact-col--network text-gray-500`}>
+          -
         </div>
-        <div className="vps-compact-col vps-compact-col--traffic">
-          <div className="h-3 skeleton-bg rounded w-24" />
+        {/* TRAFFIC */}
+        <div className={`vps-compact-col vps-compact-col--traffic text-gray-500`}>
+          -
         </div>
+        {/* CPU */}
         <div className="vps-compact-col vps-compact-col--cpu">
-          <div className="h-3 skeleton-bg rounded w-12" />
+          <div className={`vps-compact-meter vps-compact-meter--${themeId}`}>
+            <div className="vps-compact-meter-fill" style={{ width: '0%' }} />
+          </div>
+          <span className="vps-compact-meter-text text-gray-500">-</span>
         </div>
+        {/* MEM */}
         <div className="vps-compact-col vps-compact-col--mem">
-          <div className="h-3 skeleton-bg rounded w-12" />
+          <div className={`vps-compact-meter vps-compact-meter--${themeId}`}>
+            <div className="vps-compact-meter-fill" style={{ width: '0%' }} />
+          </div>
+          <span className="vps-compact-meter-text text-gray-500">-</span>
         </div>
+        {/* HDD */}
         <div className="vps-compact-col vps-compact-col--hdd">
-          <div className="h-3 skeleton-bg rounded w-12" />
+          <div className={`vps-compact-meter vps-compact-meter--${themeId}`}>
+            <div className="vps-compact-meter-fill" style={{ width: '0%' }} />
+          </div>
+          <span className="vps-compact-meter-text text-gray-500">-</span>
         </div>
       </div>
     );
@@ -1068,7 +1215,7 @@ export default function Dashboard() {
     : [];
 
   return (
-    <div className={`vps-page vps-page--${themeClass}`}>
+    <div className={`vps-page vps-page--${themeClass}${backgroundUrl ? ' has-bg-image' : ''}`}>
       {/* Background Image Layer */}
       {backgroundUrl && (
         <>

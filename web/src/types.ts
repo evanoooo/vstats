@@ -9,6 +9,7 @@ export interface SystemMetrics {
   uptime: number;
   load_average: LoadAverage;
   ping?: PingMetrics;
+  gpu?: GPUMetrics;
   version?: string;
 }
 
@@ -80,6 +81,31 @@ export interface LoadAverage {
   fifteen: number;
 }
 
+export interface GPUMetrics {
+  gpus: GPU[];
+}
+
+export interface GPU {
+  index: number;
+  name: string;
+  vendor: string;  // "NVIDIA", "AMD", "Intel"
+  memory_total: number;
+  memory_used: number;
+  memory_percent: number;
+  utilization: number;
+  temperature?: number;
+  fan_speed?: number;
+  power_draw?: number;
+  power_limit?: number;
+  clock_core?: number;
+  clock_memory?: number;
+  driver_version?: string;
+  cuda_version?: string;
+  pci_bus?: string;
+  encoder_util?: number;
+  decoder_util?: number;
+}
+
 export interface PingMetrics {
   targets: PingTarget[];
 }
@@ -92,6 +118,17 @@ export interface PingTarget {
   latency_ms: number | null;
   packet_loss: number;
   status: string;
+}
+
+// GeoIP data
+export interface GeoIPData {
+  country_code: string;
+  country_name: string;
+  city?: string;
+  region?: string;
+  latitude?: number;
+  longitude?: number;
+  updated_at?: string;
 }
 
 // Server Groups (Deprecated - for backward compatibility)
@@ -175,4 +212,124 @@ export interface PingHistoryPoint {
   timestamp: string;
   latency_ms: number | null;
   status: string;
+}
+
+// ============================================================================
+// Alert Types
+// ============================================================================
+
+export interface AlertConfig {
+  enabled: boolean;
+  channels: NotificationChannel[];
+  rules: AlertRules;
+  templates?: Record<string, AlertTemplate>;
+  global_cooldown?: number;
+  recovery_notify?: boolean;
+}
+
+export interface NotificationChannel {
+  id: string;
+  type: 'email' | 'telegram' | 'discord' | 'webhook' | 'bark' | 'serverchan';
+  name: string;
+  enabled: boolean;
+  config: Record<string, string>;
+  priority?: number;
+}
+
+export interface AlertRules {
+  offline: OfflineAlertRule;
+  load: LoadAlertRule;
+  traffic: TrafficAlertRule;
+}
+
+export interface OfflineAlertRule {
+  enabled: boolean;
+  grace_period: number;
+  channels: string[];
+  servers: string[];
+  exclude: string[];
+}
+
+export interface ThresholdConfig {
+  warning?: number;
+  critical?: number;
+  duration?: number;
+}
+
+export interface LoadAlertRule {
+  enabled: boolean;
+  cpu?: ThresholdConfig;
+  memory?: ThresholdConfig;
+  disk?: ThresholdConfig;
+  channels: string[];
+  servers: string[];
+  exclude: string[];
+  cooldown?: number;
+}
+
+export interface TrafficLimit {
+  server_id: string;
+  monthly_gb: number;
+  type: 'sum' | 'max' | 'up' | 'down';
+  reset_day?: number;
+  warning?: number;
+}
+
+export interface TrafficAlertRule {
+  enabled: boolean;
+  limits: TrafficLimit[];
+  channels: string[];
+  cooldown?: number;
+}
+
+export interface AlertTemplate {
+  title: string;
+  body: string;
+  format?: string;
+}
+
+export interface AlertState {
+  id: string;
+  type: string;
+  server_id: string;
+  server_name: string;
+  severity: 'warning' | 'critical';
+  status: 'firing' | 'resolved';
+  value: number;
+  threshold: number;
+  message: string;
+  started_at: string;
+  updated_at: string;
+  resolved_at?: string;
+  notified_at?: string;
+  muted: boolean;
+}
+
+export interface AlertStats {
+  total_firing: number;
+  critical: number;
+  warning: number;
+  servers_online: number;
+  servers_total: number;
+}
+
+export interface AlertsResponse {
+  alerts: AlertState[];
+  stats: AlertStats;
+}
+
+export interface AlertHistory {
+  id: number;
+  alert_id: string;
+  type: string;
+  server_id: string;
+  server_name: string;
+  severity: string;
+  value: number;
+  threshold: number;
+  message: string;
+  started_at: string;
+  resolved_at?: string;
+  duration: number;
+  notified: boolean;
 }

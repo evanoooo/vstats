@@ -1,8 +1,15 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 
+interface OIDCProviderInfo {
+  id: string;
+  name: string;
+}
+
 interface OAuthProviders {
   github?: boolean;
   google?: boolean;
+  oidc?: OIDCProviderInfo[];
+  cloudflare?: boolean;
 }
 
 interface AuthContextType {
@@ -12,7 +19,7 @@ interface AuthContextType {
   logout: () => void;
   isLoading: boolean;
   oauthProviders: OAuthProviders;
-  startOAuthLogin: (provider: 'github' | 'google') => Promise<void>;
+  startOAuthLogin: (provider: string) => Promise<void>;
   handleOAuthCallback: (token: string, expiresAt: number, provider: string, user: string) => void;
   oauthUser: string | null;
   oauthProvider: string | null;
@@ -92,9 +99,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const startOAuthLogin = async (provider: 'github' | 'google'): Promise<void> => {
+  const startOAuthLogin = async (provider: string): Promise<void> => {
     try {
-      const res = await fetch(`/api/auth/oauth/${provider}`);
+      // Determine the correct endpoint based on provider type
+      let endpoint: string;
+      if (provider.startsWith('oidc_')) {
+        // OIDC provider: oidc_0, oidc_1, etc.
+        endpoint = `/api/auth/oauth/oidc/${provider}`;
+      } else if (provider === 'cloudflare') {
+        endpoint = '/api/auth/oauth/cloudflare';
+      } else {
+        // GitHub or Google
+        endpoint = `/api/auth/oauth/${provider}`;
+      }
+
+      const res = await fetch(endpoint);
       if (res.ok) {
         const data = await res.json();
         // Redirect to OAuth provider

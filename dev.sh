@@ -7,6 +7,7 @@
 #   ./dev.sh          # Start server (default)
 #   ./dev.sh server   # Start server
 #   ./dev.sh cloud    # Start cloud
+#   ./dev.sh build    # Build Linux binaries
 #
 
 set -e
@@ -15,7 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR"
 SERVER_DIR="$PROJECT_ROOT/server-go"
 WEB_DIR="$PROJECT_ROOT/web"
-DOCS_SITE_DIR="$PROJECT_ROOT/docs-site"
+SITE_DIR="$PROJECT_ROOT/site"
 
 # Colors
 GREEN='\033[0;32m'
@@ -27,21 +28,24 @@ NC='\033[0m'
 # Parse arguments
 MODE="${1:-server}"
 
-if [[ "$MODE" != "server" && "$MODE" != "cloud" ]]; then
-    echo -e "${RED}Error: Unknown mode '$MODE'. Use 'server' or 'cloud'.${NC}"
+if [[ "$MODE" != "server" && "$MODE" != "cloud" && "$MODE" != "build" ]]; then
+    echo -e "${RED}Error: Unknown mode '$MODE'. Use 'server', 'cloud', or 'build'.${NC}"
     echo ""
     echo "Usage:"
     echo "  ./dev.sh          # Start server (default)"
     echo "  ./dev.sh server   # Start server"
     echo "  ./dev.sh cloud    # Start cloud"
+    echo "  ./dev.sh build    # Build Linux binaries"
     exit 1
 fi
 
 echo -e "${BLUE}════════════════════════════════════════${NC}"
 if [[ "$MODE" == "server" ]]; then
     echo -e "${BLUE}       vStats Development Server        ${NC}"
-else
+elif [[ "$MODE" == "cloud" ]]; then
     echo -e "${BLUE}        vStats Development Cloud        ${NC}"
+else
+    echo -e "${BLUE}       vStats Linux Build               ${NC}"
 fi
 echo -e "${BLUE}════════════════════════════════════════${NC}"
 echo ""
@@ -138,14 +142,14 @@ fi
 # Cloud Mode
 # ============================================================================
 if [[ "$MODE" == "cloud" ]]; then
-    # Build docs-site frontend
-    echo -e "${YELLOW}[1/4]${NC} Building docs-site frontend..."
-    cd "$DOCS_SITE_DIR"
+    # Build site frontend
+    echo -e "${YELLOW}[1/4]${NC} Building site frontend..."
+    cd "$SITE_DIR"
     if [ ! -d "node_modules" ]; then
         npm install
     fi
     npm run build
-    echo -e "${GREEN}✓ Docs-site frontend built${NC}"
+    echo -e "${GREEN}✓ Site frontend built${NC}"
     echo ""
 
     # Build cloud backend
@@ -219,7 +223,7 @@ if [[ "$MODE" == "cloud" ]]; then
     export PORT=3002
     export APP_ENV=development
     export APP_URL=http://localhost:3002
-    export STATIC_DIR="$DOCS_SITE_DIR/dist"
+    export STATIC_DIR="$SITE_DIR/dist"
     export DATABASE_URL="postgres://vstats:vstats_test_password@localhost:5432/vstats_cloud?sslmode=disable"
     export REDIS_URL="redis://:vstats_redis_test@localhost:6379/0"
     export JWT_SECRET="dev-jwt-secret-change-in-prod"
@@ -253,4 +257,60 @@ if [[ "$MODE" == "cloud" ]]; then
     # Change to project root and run
     cd "$PROJECT_ROOT"
     "$CLOUD_BINARY"
+fi
+
+# ============================================================================
+# Build Mode - Build Linux binaries
+# ============================================================================
+if [[ "$MODE" == "build" ]]; then
+    BUILD_DIR="$PROJECT_ROOT/build"
+    mkdir -p "$BUILD_DIR"
+
+    # Build frontend
+    echo -e "${YELLOW}[1/5]${NC} Building web frontend..."
+    cd "$WEB_DIR"
+    if [ ! -d "node_modules" ]; then
+        npm install
+    fi
+    npm run build
+    echo -e "${GREEN}✓ Web frontend built${NC}"
+    echo ""
+
+    # Build site frontend
+    echo -e "${YELLOW}[2/5]${NC} Building site frontend..."
+    cd "$SITE_DIR"
+    if [ ! -d "node_modules" ]; then
+        npm install
+    fi
+    npm run build
+    echo -e "${GREEN}✓ Site frontend built${NC}"
+    echo ""
+
+    # Build server for Linux
+    echo -e "${YELLOW}[3/5]${NC} Building server for Linux (amd64)..."
+    cd "$SERVER_DIR/cmd/server"
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "$BUILD_DIR/vstats-server-linux-amd64" .
+    echo -e "${GREEN}✓ Server built: build/vstats-server-linux-amd64${NC}"
+    echo ""
+
+    # Build agent for Linux
+    echo -e "${YELLOW}[4/5]${NC} Building agent for Linux (amd64)..."
+    cd "$SERVER_DIR/cmd/agent"
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "$BUILD_DIR/vstats-agent-linux-amd64" .
+    echo -e "${GREEN}✓ Agent built: build/vstats-agent-linux-amd64${NC}"
+    echo ""
+
+    # Build cloud for Linux
+    echo -e "${YELLOW}[5/5]${NC} Building cloud for Linux (amd64)..."
+    cd "$SERVER_DIR/cmd/cloud"
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "$BUILD_DIR/vstats-cloud-linux-amd64" .
+    echo -e "${GREEN}✓ Cloud built: build/vstats-cloud-linux-amd64${NC}"
+    echo ""
+
+    echo -e "${BLUE}════════════════════════════════════════${NC}"
+    echo -e "${GREEN}Build complete! Output files:${NC}"
+    echo -e "${GREEN}  build/vstats-server-linux-amd64${NC}"
+    echo -e "${GREEN}  build/vstats-agent-linux-amd64${NC}"
+    echo -e "${GREEN}  build/vstats-cloud-linux-amd64${NC}"
+    echo -e "${BLUE}════════════════════════════════════════${NC}"
 fi

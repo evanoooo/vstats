@@ -161,6 +161,79 @@ func (mb *MetricsBuffer) Close() {
 	close(mb.done)
 }
 
+// GetLastMetrics returns the last metrics data for a server from the database
+// This is used to show offline servers with their last known state
+func GetLastMetrics(serverID string) *SystemMetrics {
+	if dbWriter == nil {
+		return nil
+	}
+
+	db := dbWriter.GetDB()
+
+	var cpuUsage, memoryUsage, diskUsage float32
+	var load1, load5, load15 float64
+	var netRx, netTx int64
+	var pingMs *float64
+	var timestamp string
+
+	err := db.QueryRow(`
+		SELECT timestamp, cpu_usage, memory_usage, disk_usage, net_rx, net_tx, load_1, load_5, load_15, ping_ms
+		FROM metrics_raw 
+		WHERE server_id = ? 
+		ORDER BY timestamp DESC 
+		LIMIT 1`, serverID).Scan(
+		&timestamp, &cpuUsage, &memoryUsage, &diskUsage, &netRx, &netTx,
+		&load1, &load5, &load15, &pingMs)
+
+	if err != nil {
+		return nil
+	}
+
+	// Parse timestamp
+	ts, err := time.Parse(time.RFC3339, timestamp)
+	if err != nil {
+		ts = time.Now()
+	}
+
+	// Build metrics from database data
+	metrics := &SystemMetrics{
+		Timestamp: ts,
+		CPU: CpuMetrics{
+			Usage: cpuUsage,
+		},
+		Memory: MemoryMetrics{
+			UsagePercent: memoryUsage,
+		},
+		Disks: []DiskMetrics{
+			{UsagePercent: diskUsage},
+		},
+		Network: NetworkMetrics{
+			TotalRx: uint64(netRx),
+			TotalTx: uint64(netTx),
+		},
+		LoadAverage: LoadAverage{
+			One:     load1,
+			Five:    load5,
+			Fifteen: load15,
+		},
+	}
+
+	// Add ping data if available
+	if pingMs != nil {
+		metrics.Ping = &PingMetrics{
+			Targets: []PingTarget{
+				{
+					Name:      "avg",
+					LatencyMs: pingMs,
+					Status:    "ok",
+				},
+			},
+		}
+	}
+
+	return metrics
+}
+
 // GetLastMetricsTime returns the last metrics timestamp for a server
 func GetLastMetricsTime(serverID string) *time.Time {
 	if dbWriter == nil {
@@ -1179,6 +1252,67 @@ func InitDatabase() (*sql.DB, error) {
 			PRIMARY KEY (server_id, target_name, bucket)
 		) WITHOUT ROWID
 	`)
+
+	// Create alert history table
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS alert_history (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			alert_id TEXT NOT NULL,
+			type TEXT NOT NULL,
+			server_id TEXT NOT NULL,
+			server_name TEXT NOT NULL,
+			severity TEXT NOT NULL,
+			value REAL,
+			threshold REAL,
+			message TEXT NOT NULL,
+			started_at TEXT NOT NULL,
+			resolved_at TEXT,
+			duration INTEGER,
+			notified INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_alert_history_server ON alert_history(server_id, started_at)")
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_alert_history_type ON alert_history(type, started_at)")
+
+	// Create notification events table
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS notification_events (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			alert_id TEXT NOT NULL,
+			channel_id TEXT NOT NULL,
+			type TEXT NOT NULL,
+			server_id TEXT NOT NULL,
+			title TEXT NOT NULL,
+			message TEXT NOT NULL,
+			status TEXT NOT NULL,
+			error TEXT,
+			sent_at TEXT NOT NULL,
+			retry_count INTEGER NOT NULL DEFAULT 0
+		)
+	`)
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_notification_events_alert ON notification_events(alert_id)")
+
+	// Create audit log table
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS audit_logs (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			timestamp TEXT NOT NULL,
+			action TEXT NOT NULL,
+			category TEXT NOT NULL,
+			user_ip TEXT NOT NULL,
+			user_agent TEXT,
+			target_type TEXT,
+			target_id TEXT,
+			target_name TEXT,
+			details TEXT,
+			status TEXT NOT NULL DEFAULT 'success',
+			error_message TEXT
+		)
+	`)
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp)")
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action)")
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_audit_logs_category ON audit_logs(category)")
 
 	// Run ANALYZE in background to avoid slow startup
 	go func() {
