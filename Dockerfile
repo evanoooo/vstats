@@ -1,7 +1,7 @@
 # Multi-stage build for vstats-server
 
 # Stage 1: Build frontend
-FROM node:20-alpine AS frontend-builder
+FROM node:25-alpine AS frontend-builder
 
 WORKDIR /app/web
 
