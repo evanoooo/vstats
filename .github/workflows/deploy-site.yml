@@ -43,7 +43,7 @@ jobs:
       - name: Clean and install dependencies
         working-directory: site
         run: |
-          rm -rf node_modules
+          rm -rf node_modules package-lock.json
           npm install
 
       - name: Build frontend
