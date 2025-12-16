@@ -7,8 +7,9 @@ on:
   workflow_dispatch:
 
 env:
-  GO_VERSION: '1.23'
+  GO_VERSION: '1.24'
   NODE_VERSION: '20'
+  GOTOOLCHAIN: auto
 
 permissions:
   contents: write
@@ -158,11 +159,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: server-go/go.mod
           cache-dependency-path: server-go/go.sum
 
       - name: Build ${{ matrix.binary }} (${{ matrix.os }}/${{ matrix.arch }})
         working-directory: server-go
+        env:
+          GOTOOLCHAIN: auto
         run: |
           GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} CGO_ENABLED=0 go build \
             -ldflags "-X ${{ matrix.version_var }}=${{ needs.version.outputs.version }}" \
