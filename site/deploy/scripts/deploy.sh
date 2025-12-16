@@ -69,7 +69,7 @@ setup() {
     echo "  1. Edit .env and set secure passwords"
     echo "  2. Build frontend: cd ../.. && npm run build && cp -r dist/* deploy/dist/"
     echo "  3. Start services: ./scripts/deploy.sh start"
-    echo "  4. Configure external nginx to proxy to 127.0.0.1:3001"
+    echo "  4. Configure external nginx to proxy to 127.0.0.1:3100"
     echo ""
 }
 
@@ -90,7 +90,7 @@ start() {
     status
     
     echo ""
-    echo_info "API is available at: http://127.0.0.1:3001"
+    echo_info "API is available at: http://127.0.0.1:3100"
     echo_info "Configure your external nginx to proxy to this address"
 }
 
@@ -144,7 +144,7 @@ health() {
     
     echo ""
     echo "Testing API endpoint..."
-    if curl -sf --max-time 10 "http://127.0.0.1:3001/health" > /dev/null 2>&1; then
+    if curl -sf --max-time 10 "http://127.0.0.1:3100/health" > /dev/null 2>&1; then
         echo "✅ API health check passed"
     else
         echo "❌ API health check failed"

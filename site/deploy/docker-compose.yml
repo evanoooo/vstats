@@ -8,7 +8,7 @@ services:
     restart: unless-stopped
     environment:
       APP_ENV: ${APP_ENV:-production}
-      PORT: "3001"
+      PORT: "3100"
       DATABASE_URL: postgres://${POSTGRES_USER:-vstats}:${POSTGRES_PASSWORD:-vstats_secure_password}@postgres:5432/${POSTGRES_DB:-vstats_cloud}?sslmode=disable
       REDIS_URL: redis://:${REDIS_PASSWORD:-vstats_redis_password}@redis:6379/0
       JWT_SECRET: ${JWT_SECRET:-change_me_in_production}
@@ -27,7 +27,7 @@ services:
       BINARY_DIR: /app/binaries
     ports:
       # 只绑定本地，由外部 nginx 代理
-      - "127.0.0.1:3001:3001"
+      - "127.0.0.1:3100:3100"
     volumes:
       # 前端静态文件挂载到 API 容器
       - ./dist:/app/static:ro
@@ -39,7 +39,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3001/health || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3100/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5

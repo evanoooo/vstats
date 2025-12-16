@@ -105,11 +105,11 @@ if docker ps --format '{{.Names}}' | grep -q "^${API_CONTAINER}$"; then
     fi
     
     # Check if API is responding
-    if docker exec ${API_CONTAINER} wget -q -O- http://localhost:3001/health > /dev/null 2>&1; then
+    if docker exec ${API_CONTAINER} wget -q -O- http://localhost:3100/health > /dev/null 2>&1; then
         echo -e "  Endpoint: ${GREEN}OK${NC}"
         
         # Get detailed health
-        DETAILED=$(docker exec ${API_CONTAINER} wget -q -O- http://localhost:3001/health/detailed 2>/dev/null || echo "")
+        DETAILED=$(docker exec ${API_CONTAINER} wget -q -O- http://localhost:3100/health/detailed 2>/dev/null || echo "")
         if [ -n "$DETAILED" ]; then
             DB_STATUS=$(echo "$DETAILED" | grep -o '"database":{[^}]*}' | grep -o '"status":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
             REDIS_STATUS=$(echo "$DETAILED" | grep -o '"redis":{[^}]*}' | grep -o '"status":"[^"]*"' | cut -d'"' -f4 || echo "unknown")

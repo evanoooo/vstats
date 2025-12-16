@@ -250,8 +250,8 @@ jobs:
             done
             
             # 测试 API
-            if curl -sf --max-time 10 "http://127.0.0.1:3001/health" > /dev/null 2>&1; then
-              echo "✅ API health check passed (127.0.0.1:3001)"
+            if curl -sf --max-time 10 "http://127.0.0.1:3100/health" > /dev/null 2>&1; then
+              echo "✅ API health check passed (127.0.0.1:3100)"
             else
               echo "⚠️  API health check failed"
             fi
@@ -281,9 +281,9 @@ jobs:
           echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Services" >> $GITHUB_STEP_SUMMARY
-          echo "- api (backend + static files on 127.0.0.1:3001)" >> $GITHUB_STEP_SUMMARY
+          echo "- api (backend + static files on 127.0.0.1:3100)" >> $GITHUB_STEP_SUMMARY
           echo "- postgres (database)" >> $GITHUB_STEP_SUMMARY
           echo "- redis (cache)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Note" >> $GITHUB_STEP_SUMMARY
-          echo "Configure external nginx to proxy to 127.0.0.1:3001" >> $GITHUB_STEP_SUMMARY
+          echo "Configure external nginx to proxy to 127.0.0.1:3100" >> $GITHUB_STEP_SUMMARY
