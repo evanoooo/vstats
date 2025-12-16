@@ -191,10 +191,20 @@ type RemoteServer struct {
 	GeoIP        *ServerGeoIP      `json:"geoip,omitempty"`
 }
 
+// TLSConfig represents TLS/SSL configuration
+type TLSConfig struct {
+	Enabled bool   `json:"enabled"`
+	Cert    string `json:"cert,omitempty"` // Path to certificate file
+	Key     string `json:"key,omitempty"`  // Path to private key file
+}
+
 type AppConfig struct {
 	AdminPasswordHash string            `json:"admin_password_hash"`
 	JWTSecret         string            `json:"jwt_secret"`
 	Port              string            `json:"port,omitempty"`
+	Host              string            `json:"host,omitempty"` // Listen address (0.0.0.0, [::], or specific IP)
+	DualStack         bool             `json:"dual_stack,omitempty"` // Enable dual-stack (IPv4 + IPv6) support
+	TLS               *TLSConfig        `json:"tls,omitempty"`   // TLS/SSL configuration
 	Servers           []RemoteServer    `json:"servers"`
 	Groups            []ServerGroup     `json:"groups,omitempty"` // Deprecated, for backward compatibility
 	GroupDimensions   []GroupDimension  `json:"group_dimensions,omitempty"`
