@@ -397,13 +397,140 @@ func main() {
 		port = "3001"
 	}
 
-	fmt.Printf("🚀 Server running on http://0.0.0.0:%s\n", port)
-	fmt.Printf("📡 Agent WebSocket: ws://0.0.0.0:%s/ws/agent\n", port)
-	fmt.Printf("🔑 Reset password: sudo /opt/vstats/vstats-server --reset-password\n")
+	// Get host with priority: config > environment variable > default
+	host := config.Host
+	if host == "" {
+		host = os.Getenv("VSTATS_HOST")
+	}
+	if host == "" {
+		host = "0.0.0.0" // Default to IPv4 all interfaces
+	}
 
-	if err := r.Run("0.0.0.0:" + port); err != nil {
-		fmt.Printf("Failed to start server: %v\n", err)
-		os.Exit(1)
+	// Check if dual-stack mode is enabled
+	dualStack := config.DualStack
+	if !dualStack && os.Getenv("VSTATS_DUAL_STACK") == "true" {
+		dualStack = true
+	}
+
+	// Determine protocol and address format
+	useTLS := config.TLS != nil && config.TLS.Enabled && config.TLS.Cert != "" && config.TLS.Key != ""
+	protocol := "http"
+	wsProtocol := "ws"
+	if useTLS {
+		protocol = "https"
+		wsProtocol = "wss"
+	}
+
+	// Start server(s)
+	if dualStack {
+		// Dual-stack mode: listen on both IPv4 and IPv6
+		fmt.Printf("🌐 Dual-stack mode enabled (IPv4 + IPv6)\n")
+		
+		// Verify TLS certificates if enabled
+		if useTLS {
+			if _, err := os.Stat(config.TLS.Cert); err != nil {
+				fmt.Printf("❌ TLS certificate file not found: %s\n", config.TLS.Cert)
+				os.Exit(1)
+			}
+			if _, err := os.Stat(config.TLS.Key); err != nil {
+				fmt.Printf("❌ TLS private key file not found: %s\n", config.TLS.Key)
+				os.Exit(1)
+			}
+			fmt.Printf("🔒 TLS enabled: cert=%s, key=%s\n", config.TLS.Cert, config.TLS.Key)
+		}
+
+		// Start IPv4 listener
+		ipv4Addr := "0.0.0.0:" + port
+		fmt.Printf("🚀 Server (IPv4) running on %s://0.0.0.0:%s\n", protocol, port)
+		fmt.Printf("📡 Agent WebSocket (IPv4): %s://0.0.0.0:%s/ws/agent\n", wsProtocol, port)
+
+		// Start IPv6 listener
+		ipv6Addr := "[::]:" + port
+		fmt.Printf("🚀 Server (IPv6) running on %s://[::]:%s\n", protocol, port)
+		fmt.Printf("📡 Agent WebSocket (IPv6): %s://[::]:%s/ws/agent\n", wsProtocol, port)
+		fmt.Printf("🔑 Reset password: sudo /opt/vstats/vstats-server --reset-password\n")
+
+		// Create HTTP server
+		srv := &http.Server{
+			Addr:    ipv4Addr,
+			Handler: r,
+		}
+
+		// Start IPv4 listener in goroutine
+		go func() {
+			var err error
+			if useTLS {
+				err = srv.ListenAndServeTLS(config.TLS.Cert, config.TLS.Key)
+			} else {
+				err = srv.ListenAndServe()
+			}
+			if err != nil && err != http.ErrServerClosed {
+				fmt.Printf("❌ IPv4 listener error: %v\n", err)
+				os.Exit(1)
+			}
+		}()
+
+		// Start IPv6 listener in main goroutine
+		srv6 := &http.Server{
+			Addr:    ipv6Addr,
+			Handler: r,
+		}
+
+		if useTLS {
+			if err := srv6.ListenAndServeTLS(config.TLS.Cert, config.TLS.Key); err != nil {
+				fmt.Printf("Failed to start IPv6 server: %v\n", err)
+				os.Exit(1)
+			}
+		} else {
+			if err := srv6.ListenAndServe(); err != nil {
+				fmt.Printf("Failed to start IPv6 server: %v\n", err)
+				os.Exit(1)
+			}
+		}
+	} else {
+		// Single-stack mode: listen on specified address
+		// Format address for display and listen
+		// IPv6 addresses need special handling (contain colons but no dots)
+		isIPv6 := strings.Contains(host, ":") && !strings.Contains(host, ".")
+		displayAddr := host
+		listenAddr := host + ":" + port
+		
+		if isIPv6 {
+			// Remove brackets if present for processing
+			cleanHost := strings.Trim(host, "[]")
+			// Format for display (with brackets)
+			displayAddr = "[" + cleanHost + "]"
+			// Format for listen (with brackets)
+			listenAddr = "[" + cleanHost + "]:" + port
+		}
+
+		fmt.Printf("🚀 Server running on %s://%s:%s\n", protocol, displayAddr, port)
+		fmt.Printf("📡 Agent WebSocket: %s://%s:%s/ws/agent\n", wsProtocol, displayAddr, port)
+		fmt.Printf("🔑 Reset password: sudo /opt/vstats/vstats-server --reset-password\n")
+
+		// Start server with TLS if configured
+		if useTLS {
+			// Verify certificate files exist
+			if _, err := os.Stat(config.TLS.Cert); err != nil {
+				fmt.Printf("❌ TLS certificate file not found: %s\n", config.TLS.Cert)
+				os.Exit(1)
+			}
+			if _, err := os.Stat(config.TLS.Key); err != nil {
+				fmt.Printf("❌ TLS private key file not found: %s\n", config.TLS.Key)
+				os.Exit(1)
+			}
+
+			fmt.Printf("🔒 TLS enabled: cert=%s, key=%s\n", config.TLS.Cert, config.TLS.Key)
+			if err := r.RunTLS(listenAddr, config.TLS.Cert, config.TLS.Key); err != nil {
+				fmt.Printf("Failed to start server: %v\n", err)
+				os.Exit(1)
+			}
+		} else {
+			if err := r.Run(listenAddr); err != nil {
+				fmt.Printf("Failed to start server: %v\n", err)
+				os.Exit(1)
+			}
+		}
 	}
 }
 
