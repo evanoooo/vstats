@@ -25,7 +25,7 @@ describe('ThemeContext', () => {
     localStorage.clear()
     vi.clearAllMocks()
     // Mock fetch to prevent network requests
-    vi.spyOn(global, 'fetch').mockResolvedValue({
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: false,
       status: 404,
       json: () => Promise.resolve({}),

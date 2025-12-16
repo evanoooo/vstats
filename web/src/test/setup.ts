@@ -26,7 +26,7 @@ beforeAll(() => {
 
 // Mock ResizeObserver
 beforeAll(() => {
-  global.ResizeObserver = vi.fn().mockImplementation(() => ({
+  globalThis.ResizeObserver = vi.fn().mockImplementation(() => ({
     observe: vi.fn(),
     unobserve: vi.fn(),
     disconnect: vi.fn(),
@@ -35,7 +35,7 @@ beforeAll(() => {
 
 // Mock IntersectionObserver
 beforeAll(() => {
-  global.IntersectionObserver = vi.fn().mockImplementation(() => ({
+  globalThis.IntersectionObserver = vi.fn().mockImplementation(() => ({
     observe: vi.fn(),
     unobserve: vi.fn(),
     disconnect: vi.fn(),
@@ -55,7 +55,7 @@ beforeAll(() => {
   Object.defineProperty(MockWebSocket, 'OPEN', { value: 1 })
   Object.defineProperty(MockWebSocket, 'CLOSING', { value: 2 })
   Object.defineProperty(MockWebSocket, 'CLOSED', { value: 3 })
-  global.WebSocket = MockWebSocket
+  globalThis.WebSocket = MockWebSocket
 })
 
 // Mock localStorage
