@@ -40,9 +40,11 @@ jobs:
           cache: 'npm'
           cache-dependency-path: site/package-lock.json
 
-      - name: Install dependencies
+      - name: Clean and install dependencies
         working-directory: site
-        run: npm ci
+        run: |
+          rm -rf node_modules
+          npm install
 
       - name: Build frontend
         working-directory: site
