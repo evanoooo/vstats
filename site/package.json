@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run build:vp && tsc && vite build",
+    "build": "npm run build:vp && npm run copy:vp && tsc && vite build",
     "build:main": "tsc && vite build",
     "build:vp": "cd vitepress && npm install && npm run build",
+    "copy:vp": "mkdir -p dist && rm -rf dist/vp-docs && cp -r vitepress/dist dist/vp-docs",
     "dev:vp": "cd vitepress && npm run dev",
     "preview": "vite preview"
   },

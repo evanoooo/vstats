@@ -19,9 +19,9 @@ export default defineConfig({
   // Base path for deployment under /vp-docs/
   base,
   
-  // Output directory - build directly to site/dist/vp-docs
-  // (relative to docs directory: ../../dist/vp-docs)
-  outDir: '../../dist/vp-docs',
+  // Output directory - build to vitepress/dist (default location)
+  // Will be copied to site/dist/vp-docs by build script
+  outDir: '../dist',
   
   head: [
     // Favicon / app icons
