@@ -37,6 +37,7 @@ export default {
     viewModeGrid: 'Raster',
     viewModeList: 'Liste',
     viewModeCompact: 'Kompakt',
+    viewModeGlobe: '3D Globus',
     switchView: 'Ansicht wechseln',
     switchTheme: 'Zum {{mode}} Modus wechseln',
     lightMode: 'hellen',

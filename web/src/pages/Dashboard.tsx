@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactElement } from 'react';
+import { useState, useEffect, type ReactElement, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useServerManager, formatSpeed, formatUptime, type ServerState } from '../hooks/useMetrics';
@@ -9,7 +9,10 @@ import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import type { SocialLink, GroupOption } from '../types';
 import { sanitizeSocialLinks } from '../utils/security';
 
-type ViewMode = 'list' | 'grid' | 'compact';
+// Lazy load GlobeView for better initial load performance
+const GlobeView = lazy(() => import('../components/globe/GlobeView'));
+
+type ViewMode = 'list' | 'grid' | 'compact' | 'globe';
 
 // Convert ISO 3166-1 alpha-2 country code to flag emoji
 // Each letter becomes a regional indicator symbol (A=🇦, B=🇧, etc.)
@@ -1126,12 +1129,29 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
+  // Prevent body scroll when in globe view (fullscreen)
+  useEffect(() => {
+    if (viewMode === 'globe') {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [viewMode]);
+
   const toggleViewMode = () => {
-    const modes: ViewMode[] = ['grid', 'list', 'compact'];
+    const modes: ViewMode[] = ['grid', 'list', 'compact', 'globe'];
     const currentIndex = modes.indexOf(viewMode);
     const newMode = modes[(currentIndex + 1) % modes.length];
     setViewMode(newMode);
     localStorage.setItem('vstats-view-mode', newMode);
+  };
+
+  const setGlobeView = () => {
+    setViewMode('globe');
+    localStorage.setItem('vstats-view-mode', 'globe');
   };
 
   const onlineCount = servers.filter(s => s.isConnected).length;
@@ -1258,7 +1278,7 @@ export default function Dashboard() {
 
       <div className="vps-page-inner flex flex-col gap-6">
         {/* Header */}
-        <header className="flex items-center justify-between">
+        <header className={`flex items-center justify-between ${viewMode === 'globe' ? 'hidden' : ''}`}>
           <div className="flex items-center gap-4">
             <div>
               <h1 className={`text-xl md:text-2xl font-bold tracking-tight flex items-center gap-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
@@ -1275,7 +1295,7 @@ export default function Dashboard() {
             <button
               onClick={toggleViewMode}
               className={`vps-btn ${isDark ? 'vps-btn-outline-dark' : 'vps-btn-outline-light'} p-2.5`}
-              title={`${t('dashboard.switchView')} (${viewMode === 'grid' ? t('dashboard.viewModeGrid') : viewMode === 'list' ? t('dashboard.viewModeList') : t('dashboard.viewModeCompact')})`}
+              title={`${t('dashboard.switchView')} (${viewMode === 'grid' ? t('dashboard.viewModeGrid') : viewMode === 'list' ? t('dashboard.viewModeList') : viewMode === 'compact' ? t('dashboard.viewModeCompact') : t('dashboard.viewModeGlobe') || 'Globe'})`}
             >
               {viewMode === 'grid' ? (
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1285,11 +1305,30 @@ export default function Dashboard() {
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
-              ) : (
+              ) : viewMode === 'compact' ? (
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
                 </svg>
+              ) : (
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <circle cx="12" cy="12" r="9" strokeWidth={1.5} />
+                  <ellipse cx="12" cy="12" rx="4" ry="9" strokeWidth={1.5} />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 12h18" />
+                </svg>
               )}
+            </button>
+            {/* Globe View Button */}
+            <button
+              onClick={setGlobeView}
+              className={`vps-btn ${viewMode === 'globe' ? (isDark ? 'vps-btn-accent-ok-dark' : 'vps-btn-accent-ok-light') : (isDark ? 'vps-btn-outline-dark' : 'vps-btn-outline-light')} p-2.5`}
+              title={t('dashboard.viewModeGlobe') || '3D Globe View'}
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <circle cx="12" cy="12" r="9" strokeWidth={1.5} />
+                <ellipse cx="12" cy="12" rx="4" ry="9" strokeWidth={1.5} />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 12h18" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 3c2.5 3 4 6 4 9s-1.5 6-4 9" />
+              </svg>
             </button>
             {/* Language Switcher */}
             <LanguageSwitcher isDark={isDark} />
@@ -1307,7 +1346,7 @@ export default function Dashboard() {
         </header>
 
         {/* Overview Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className={`grid grid-cols-2 md:grid-cols-4 gap-3 ${viewMode === 'globe' ? 'hidden' : ''}`}>
           <div className={`vps-overview-card vps-overview-card--online-${themeClass}`}>
             <div className="vps-overview-label vps-overview-label--online">{t('dashboard.online')}</div>
             <div className={`vps-overview-value vps-overview-value--${themeClass}`}>{onlineCount}</div>
@@ -1328,7 +1367,7 @@ export default function Dashboard() {
 
         {/* Dimension Selector */}
         {(enabledDimensions.length > 0 || servers.some(s => s.config.tag)) && (
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className={`flex items-center gap-2 flex-wrap ${viewMode === 'globe' ? 'hidden' : ''}`}>
             <span className={`text-xs font-medium ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>{t('dashboard.groupBy')}</span>
             <button
               onClick={() => handleDimensionSelect(null)}
@@ -1383,12 +1422,35 @@ export default function Dashboard() {
 
         {/* Server List */}
         <div className="flex flex-col gap-3">
-          <div className={`flex items-center justify-between px-1 text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
-            <span>{t('dashboard.serverDetails')}</span>
-            <span className={`font-mono ${isDark ? 'text-gray-700' : 'text-gray-400'}`}>{new Date().toLocaleTimeString()}</span>
-          </div>
+          {viewMode !== 'globe' && (
+            <div className={`flex items-center justify-between px-1 text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+              <span>{t('dashboard.serverDetails')}</span>
+              <span className={`font-mono ${isDark ? 'text-gray-700' : 'text-gray-400'}`}>{new Date().toLocaleTimeString()}</span>
+            </div>
+          )}
           
-          {showSkeleton ? (
+          {viewMode === 'globe' ? (
+            <Suspense fallback={
+              <div className="globe-container flex items-center justify-center">
+                <div className={`text-center ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  <svg className="animate-spin h-8 w-8 mx-auto mb-3" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  <span>{t('common.loading') || 'Loading 3D Globe...'}</span>
+                </div>
+              </div>
+            }>
+              <GlobeView 
+                servers={servers} 
+                onServerClick={(server) => navigate(`/server/${server.config.id}`)}
+                onExitFullscreen={() => {
+                  setViewMode('grid');
+                  localStorage.setItem('vstats-view-mode', 'grid');
+                }}
+              />
+            </Suspense>
+          ) : showSkeleton ? (
             viewMode === 'list' ? (
               <div className="flex flex-col gap-3">
                 {[1, 2, 3].map(i => <VpsListCardSkeleton key={i} isDark={isDark} />)}

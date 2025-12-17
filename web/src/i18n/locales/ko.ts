@@ -37,6 +37,7 @@ export default {
     viewModeGrid: '그리드',
     viewModeList: '목록',
     viewModeCompact: '컴팩트',
+    viewModeGlobe: '3D 지구본',
     switchView: '보기 전환',
     switchTheme: '{{mode}} 모드로 전환',
     lightMode: '라이트',

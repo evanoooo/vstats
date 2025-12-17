@@ -37,6 +37,7 @@ export default {
     viewModeGrid: 'Grille',
     viewModeList: 'Liste',
     viewModeCompact: 'Compact',
+    viewModeGlobe: 'Globe 3D',
     switchView: 'Changer de vue',
     switchTheme: 'Passer au mode {{mode}}',
     lightMode: 'clair',

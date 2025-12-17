@@ -355,6 +355,7 @@ func main() {
 		// Serve static files from web directory
 		r.Static("/assets", webDir+"/assets")
 		r.Static("/logos", webDir+"/logos") // Serve logo files
+		r.Static("/textures", webDir+"/textures") // Serve globe/map textures
 		r.StaticFile("/favicon.ico", webDir+"/favicon.ico")
 		r.StaticFile("/vite.svg", webDir+"/vite.svg")
 		r.GET("/", func(c *gin.Context) {

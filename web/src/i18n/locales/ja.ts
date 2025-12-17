@@ -37,6 +37,7 @@ export default {
     viewModeGrid: 'グリッド',
     viewModeList: 'リスト',
     viewModeCompact: 'コンパクト',
+    viewModeGlobe: '3D 地球儀',
     switchView: '表示切替',
     switchTheme: '{{mode}}モードに切替',
     lightMode: 'ライト',

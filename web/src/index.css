@@ -150,6 +150,7 @@
 }
 
 @import "./styles/themes/index.css";
+@import "./styles/globe.css";
 
 /* Override theme backgrounds when custom background image is set */
 .has-bg-image {

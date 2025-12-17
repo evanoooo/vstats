@@ -37,6 +37,7 @@ export default {
     viewModeGrid: 'Сетка',
     viewModeList: 'Список',
     viewModeCompact: 'Компактный',
+    viewModeGlobe: '3D Глобус',
     switchView: 'Переключить вид',
     switchTheme: 'Переключить на {{mode}} режим',
     lightMode: 'светлый',

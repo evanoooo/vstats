@@ -37,6 +37,7 @@ export default {
     viewModeGrid: '网格',
     viewModeList: '列表',
     viewModeCompact: '紧凑',
+    viewModeGlobe: '3D 地球',
     switchView: '切换视图',
     switchTheme: '切换到{{mode}}模式',
     lightMode: '浅色',
@@ -81,6 +82,13 @@ export default {
     onlineUsers: '人在线',
     // Days
     days: '天',
+  },
+
+  // Globe View
+  globe: {
+    dragToRotate: '拖拽旋转',
+    scrollToZoom: '滚动缩放',
+    clickForDetails: '点击节点查看详情',
   },
 
   // Server Detail

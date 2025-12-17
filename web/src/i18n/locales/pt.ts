@@ -37,6 +37,7 @@ export default {
     viewModeGrid: 'Grade',
     viewModeList: 'Lista',
     viewModeCompact: 'Compacto',
+    viewModeGlobe: 'Globo 3D',
     switchView: 'Mudar visualização',
     switchTheme: 'Mudar para modo {{mode}}',
     lightMode: 'claro',

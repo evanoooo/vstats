@@ -37,6 +37,7 @@ export default {
     viewModeGrid: 'Grid',
     viewModeList: 'List',
     viewModeCompact: 'Compact',
+    viewModeGlobe: '3D Globe',
     switchView: 'Switch View',
     switchTheme: 'Switch to {{mode}} mode',
     lightMode: 'light',
@@ -81,6 +82,13 @@ export default {
     onlineUsers: 'online',
     // Days
     days: 'Days',
+  },
+
+  // Globe View
+  globe: {
+    dragToRotate: 'Drag to rotate',
+    scrollToZoom: 'Scroll to zoom',
+    clickForDetails: 'Click node for details',
   },
 
   // Server Detail

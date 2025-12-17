@@ -37,6 +37,7 @@ export default {
     viewModeGrid: 'Cuadrícula',
     viewModeList: 'Lista',
     viewModeCompact: 'Compacto',
+    viewModeGlobe: 'Globo 3D',
     switchView: 'Cambiar vista',
     switchTheme: 'Cambiar a modo {{mode}}',
     lightMode: 'claro',

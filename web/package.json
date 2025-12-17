@@ -15,13 +15,16 @@
     "test:watch": "vitest --watch"
   },
   "dependencies": {
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.4.2",
     "i18next": "^25.7.3",
     "i18next-browser-languagedetector": "^8.2.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-i18next": "^16.5.0",
     "react-router-dom": "^7.10.1",
-    "recharts": "^3.6.0"
+    "recharts": "^3.6.0",
+    "three": "^0.182.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
@@ -32,6 +35,7 @@
     "@types/node": "^25.0.2",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
+    "@types/three": "^0.182.0",
     "@vitejs/plugin-react": "^5.1.2",
     "@vitest/coverage-v8": "^4.0.15",
     "@vitest/ui": "^4.0.15",
