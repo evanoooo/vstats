@@ -50,6 +50,17 @@ jobs:
         working-directory: site
         run: npm run build
 
+      - name: Verify vp-docs build
+        working-directory: site
+        run: |
+          if [ ! -d "dist/vp-docs" ]; then
+            echo "❌ Error: vp-docs directory not found in dist/"
+            exit 1
+          fi
+          echo "✅ vp-docs directory found"
+          echo "Contents:"
+          ls -la dist/vp-docs/ | head -20
+
       - name: Upload frontend artifact
         uses: actions/upload-artifact@v6
         with:
@@ -116,8 +127,16 @@ jobs:
           mkdir -p package/scripts
           mkdir -p package/binaries
           
-          # 复制前端构建产物
+          # 复制前端构建产物（包括 vp-docs）
           cp -r ../dist/* package/dist/
+          
+          # 验证 vp-docs 目录已复制
+          if [ -d "package/dist/vp-docs" ]; then
+            echo "✅ vp-docs directory found in deployment package"
+            ls -la package/dist/vp-docs/ | head -10
+          else
+            echo "⚠️  Warning: vp-docs directory not found in deployment package"
+          fi
           
           # 复制二进制文件（按版本组织）
           if [ -d "../../binaries-temp" ] && [ "$(ls -A ../../binaries-temp 2>/dev/null)" ]; then

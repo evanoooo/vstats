@@ -19,8 +19,9 @@ export default defineConfig({
   // Base path for deployment under /vp-docs/
   base,
   
-  // Output directory
-  outDir: '../dist',
+  // Output directory - build directly to site/dist/vp-docs
+  // (relative to docs directory: ../../dist/vp-docs)
+  outDir: '../../dist/vp-docs',
   
   head: [
     // Favicon / app icons
