@@ -629,3 +629,5 @@ func collectIntelGPUs() []GPU {
 
 	return gpus
 }
+
+

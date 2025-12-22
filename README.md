@@ -47,8 +47,29 @@ Thanks to the following sponsors for supporting this project!
 - 🖥️ **Multi-Server Management** - Support monitoring multiple servers
 - 💻 **CPU / Memory / Disk / Network** - Comprehensive monitoring
 - 🎨 **Modern UI** - Glassmorphism design with smooth animations
+- 🎭 **Theme System** - 16 built-in themes + install custom themes from GitHub
 - 🔐 **Secure Authentication** - JWT authentication protects admin interfaces
 - ⚡ **One-Click Deployment** - Docker / script one-click installation
+
+## 🎨 Theme System
+
+VStats supports a modular theme system. You can:
+
+- Choose from **16 built-in themes** (Midnight, Cyberpunk, Terminal, etc.)
+- **Install themes from GitHub**: `username/repo` or `username/repo@v1.0.0`
+- **Create your own themes** and share them with the community
+
+### Installing Custom Themes
+
+1. Go to **Settings** → **Themes** → **Install Theme**
+2. Enter a GitHub source: `username/theme-repo`
+3. Click **Install**
+
+### Creating Themes
+
+Want to create your own theme? See the [Theme Development Guide](docs/THEME-DEVELOPMENT.md).
+
+Theme template: [`docs/theme-template/`](docs/theme-template/)
 
 ## 📋 TODO
 
@@ -63,8 +84,8 @@ Thanks to the following sponsors for supporting this project!
 - [ ] Custom dashboard layout
 - [ ] Mobile responsive optimization
 - [ ] Server grouping and tagging
-- [ ] Dark / Light theme switching
-- [ ] Custom theme
+- [x] Dark / Light theme switching
+- [x] Custom theme
 - [ ] Improve vstats-cli
 - [ ] Improve vstats-cloud
 

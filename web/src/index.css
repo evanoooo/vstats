@@ -978,47 +978,69 @@ body {
   pointer-events: none;
 }
 
-.vps-overview-card--online-light {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(52, 211, 153, 0.06));
-  border-color: rgba(16, 185, 129, 0.25);
+/* Light theme overview cards */
+.light-theme .vps-overview-card--online,
+.vps-overview-card--online-light,
+[class*="vps-overview-card--online-"]:not(.dark-theme *) {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(52, 211, 153, 0.08));
+  border-color: rgba(16, 185, 129, 0.3);
 }
 
-.vps-overview-card--online-dark {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(52, 211, 153, 0.08));
-  border-color: rgba(16, 185, 129, 0.35);
+.light-theme .vps-overview-card--offline,
+.vps-overview-card--offline-light,
+[class*="vps-overview-card--offline-"]:not(.dark-theme *) {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(248, 113, 113, 0.08));
+  border-color: rgba(239, 68, 68, 0.3);
 }
 
-.vps-overview-card--offline-light {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(248, 113, 113, 0.06));
-  border-color: rgba(239, 68, 68, 0.25);
+.light-theme .vps-overview-card--download,
+.vps-overview-card--download-light,
+[class*="vps-overview-card--download-"]:not(.dark-theme *) {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(96, 165, 250, 0.08));
+  border-color: rgba(59, 130, 246, 0.3);
 }
 
-.vps-overview-card--offline-dark {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.18), rgba(248, 113, 113, 0.08));
-  border-color: rgba(239, 68, 68, 0.35);
+.light-theme .vps-overview-card--upload,
+.vps-overview-card--upload-light,
+[class*="vps-overview-card--upload-"]:not(.dark-theme *) {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(52, 211, 153, 0.08));
+  border-color: rgba(16, 185, 129, 0.3);
 }
 
-.vps-overview-card--download-light {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(96, 165, 250, 0.06));
-  border-color: rgba(59, 130, 246, 0.25);
+/* Dark theme overview cards - stronger colors for better visibility */
+.dark-theme .vps-overview-card--online,
+.vps-overview-card--online-dark,
+.dark-theme [class*="vps-overview-card--online-"] {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(52, 211, 153, 0.12));
+  border-color: rgba(16, 185, 129, 0.45);
+  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.15);
 }
 
-.vps-overview-card--download-dark {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.18), rgba(96, 165, 250, 0.08));
-  border-color: rgba(59, 130, 246, 0.35);
+.dark-theme .vps-overview-card--offline,
+.vps-overview-card--offline-dark,
+.dark-theme [class*="vps-overview-card--offline-"] {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(248, 113, 113, 0.12));
+  border-color: rgba(239, 68, 68, 0.45);
+  box-shadow: 0 4px 20px rgba(239, 68, 68, 0.15);
 }
 
-.vps-overview-card--upload-light {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(52, 211, 153, 0.06));
-  border-color: rgba(16, 185, 129, 0.25);
+.dark-theme .vps-overview-card--download,
+.vps-overview-card--download-dark,
+.dark-theme [class*="vps-overview-card--download-"] {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.25), rgba(96, 165, 250, 0.12));
+  border-color: rgba(59, 130, 246, 0.45);
+  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.15);
 }
 
-.vps-overview-card--upload-dark {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(52, 211, 153, 0.08));
-  border-color: rgba(16, 185, 129, 0.35);
+.dark-theme .vps-overview-card--upload,
+.vps-overview-card--upload-dark,
+.dark-theme [class*="vps-overview-card--upload-"] {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(52, 211, 153, 0.12));
+  border-color: rgba(16, 185, 129, 0.45);
+  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.15);
 }
 
-/* Theme-specific vps-overview-card styles are in individual theme files */
+/* Theme-specific vps-overview-card styles can override in individual theme files */
 
 .vps-overview-label {
   font-size: 10px;

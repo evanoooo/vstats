@@ -1,0 +1,27 @@
+{
+  "id": "my-custom-theme",
+  "name": "My Custom Theme",
+  "nameZh": "我的自定义主题",
+  "version": "1.0.0",
+  "author": "your-username",
+  "description": "A custom theme for VStats",
+  "descriptionZh": "VStats 自定义主题",
+  "isDark": true,
+  "style": "glass",
+  "preview": {
+    "primary": "#0a0a1a",
+    "secondary": "#151530",
+    "accent": "#6366f1",
+    "background": "#0a0a1a"
+  },
+  "fonts": {
+    "heading": "\"Inter\", -apple-system, sans-serif",
+    "body": "\"Inter\", system-ui, sans-serif",
+    "mono": "\"JetBrains Mono\", \"Fira Code\", monospace"
+  },
+  "borderRadius": "12px",
+  "cardStyle": "glass",
+  "license": "MIT",
+  "keywords": ["dark", "glass", "purple"]
+}
+

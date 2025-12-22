@@ -93,19 +93,6 @@ jobs:
             os: freebsd
             arch: arm64
             output: vstats-server-freebsd-arm64
-          # Cloud builds (Linux only for Docker)
-          - cmd: cloud
-            binary: vstats-cloud
-            version_var: main.Version
-            os: linux
-            arch: amd64
-            output: vstats-cloud-linux-amd64
-          - cmd: cloud
-            binary: vstats-cloud
-            version_var: main.Version
-            os: linux
-            arch: arm64
-            output: vstats-cloud-linux-arm64
           # Agent builds
           - cmd: agent
             binary: vstats-agent
@@ -254,12 +241,6 @@ jobs:
             binary_prefix: vstats-agent
             context: docker-context-agent
             needs_web: false
-          - name: cloud
-            image: zsai001/vstats-cloud
-            dockerfile: Dockerfile.cloud.prebuilt
-            binary_prefix: vstats-cloud
-            context: docker-context-cloud
-            needs_web: false
     
     steps:
       - name: Checkout code
@@ -391,9 +372,6 @@ jobs:
             
             # Agent (nightly)
             docker pull zsai001/vstats-agent:nightly
-            
-            # Cloud (nightly)
-            docker pull zsai001/vstats-cloud:nightly
             ```
             
             ### Binary Downloads

@@ -1,0 +1,206 @@
+/* ========================================
+   Theme: My Custom Theme
+   Author: your-username
+   Version: 1.0.0
+   
+   IMPORTANT: Replace "my-custom-theme" with your theme ID
+   from theme.json in all class selectors below.
+   ======================================== */
+
+/* ========================================
+   1. ROOT VARIABLES
+   ======================================== */
+.theme-my-custom-theme {
+  /* Accent Colors */
+  --theme-accent: #6366f1;
+  --theme-accent-hover: #4f46e5;
+  --theme-accent-soft: rgba(99, 102, 241, 0.15);
+  --theme-glow: rgba(99, 102, 241, 0.4);
+  
+  /* Background Colors */
+  --bg-primary: #0a0a1a;
+  --bg-secondary: rgba(21, 21, 48, 0.85);
+  --bg-secondary-hover: rgba(30, 30, 60, 0.9);
+  --bg-card: rgba(21, 21, 48, 0.7);
+  --bg-input: rgba(255, 255, 255, 0.08);
+  
+  /* Text Colors */
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-tertiary: #94a3b8;
+  --text-muted: #64748b;
+  
+  /* Border Colors */
+  --border-primary: rgba(99, 102, 241, 0.2);
+  --border-secondary: rgba(99, 102, 241, 0.3);
+  --border-hover: rgba(99, 102, 241, 0.5);
+  
+  /* Shadows */
+  --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.4);
+  
+  color-scheme: dark;
+}
+
+/* ========================================
+   2. PAGE BACKGROUND
+   ======================================== */
+.theme-my-custom-theme {
+  background: 
+    radial-gradient(ellipse at 0% 0%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
+    radial-gradient(ellipse at 100% 100%, rgba(139, 92, 246, 0.1) 0%, transparent 50%),
+    #0a0a1a;
+}
+
+/* ========================================
+   3. CARD STYLES
+   ======================================== */
+.theme-my-custom-theme .vps-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+  transition: all 0.3s ease;
+}
+
+.theme-my-custom-theme .vps-card:hover {
+  border-color: var(--border-hover);
+  transform: translateY(-4px);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+
+/* ========================================
+   4. OVERVIEW CARDS
+   Use attribute selectors to match dynamic class names
+   ======================================== */
+.theme-my-custom-theme [class*="vps-overview-card--online"] {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.28), rgba(52, 211, 153, 0.12));
+  border: 1px solid rgba(16, 185, 129, 0.5);
+  border-radius: 12px;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 4px 24px rgba(16, 185, 129, 0.2);
+}
+
+.theme-my-custom-theme [class*="vps-overview-card--offline"] {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.28), rgba(248, 113, 113, 0.12));
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  border-radius: 12px;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 4px 24px rgba(239, 68, 68, 0.2);
+}
+
+.theme-my-custom-theme [class*="vps-overview-card--download"] {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.28), rgba(129, 140, 248, 0.12));
+  border: 1px solid rgba(99, 102, 241, 0.5);
+  border-radius: 12px;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 4px 24px rgba(99, 102, 241, 0.2);
+}
+
+.theme-my-custom-theme [class*="vps-overview-card--upload"] {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.28), rgba(52, 211, 153, 0.12));
+  border: 1px solid rgba(16, 185, 129, 0.5);
+  border-radius: 12px;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 4px 24px rgba(16, 185, 129, 0.2);
+}
+
+/* Overview Labels */
+.theme-my-custom-theme .vps-overview-label--online { color: #34d399; }
+.theme-my-custom-theme .vps-overview-label--offline { color: #f87171; }
+.theme-my-custom-theme .vps-overview-label--download { color: #818cf8; }
+.theme-my-custom-theme .vps-overview-label--upload { color: #34d399; }
+
+/* Overview Values */
+.theme-my-custom-theme [class*="vps-overview-value--"] {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* ========================================
+   5. COMPACT TABLE VIEW
+   ======================================== */
+.theme-my-custom-theme [class*="vps-compact-header--"] {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-muted);
+  border-radius: 12px 12px 0 0;
+}
+
+.theme-my-custom-theme [class*="vps-compact-row--"] {
+  background: var(--bg-card);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.theme-my-custom-theme [class*="vps-compact-row--"]:hover {
+  background: var(--bg-secondary-hover);
+}
+
+.theme-my-custom-theme [class*="vps-compact-node-name--"] {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* ========================================
+   6. PROGRESS BARS
+   ======================================== */
+.theme-my-custom-theme .vps-resource-bar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+}
+
+.theme-my-custom-theme .vps-resource-bar-fill {
+  background: linear-gradient(90deg, var(--theme-accent), #818cf8);
+  border-radius: 8px;
+  box-shadow: 0 0 10px var(--theme-accent-soft);
+}
+
+/* ========================================
+   7. BUTTONS
+   ======================================== */
+.theme-my-custom-theme .vps-btn,
+.theme-my-custom-theme button {
+  background: var(--theme-accent-soft);
+  border: 1px solid var(--border-secondary);
+  border-radius: 12px;
+  color: var(--text-primary);
+  transition: all 0.2s ease;
+}
+
+.theme-my-custom-theme .vps-btn:hover,
+.theme-my-custom-theme button:hover {
+  background: rgba(99, 102, 241, 0.25);
+  border-color: var(--border-hover);
+  box-shadow: 0 0 20px var(--theme-accent-soft);
+}
+
+/* Primary Button */
+.theme-my-custom-theme .vps-btn-primary,
+.theme-my-custom-theme button[type="submit"] {
+  background: linear-gradient(135deg, var(--theme-accent) 0%, #4f46e5 100%);
+  border: none;
+}
+
+/* ========================================
+   8. FORM ELEMENTS
+   ======================================== */
+.theme-my-custom-theme input,
+.theme-my-custom-theme select,
+.theme-my-custom-theme textarea {
+  background: var(--bg-input);
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  color: var(--text-primary);
+}
+
+.theme-my-custom-theme input:focus,
+.theme-my-custom-theme select:focus,
+.theme-my-custom-theme textarea:focus {
+  border-color: var(--theme-accent);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--theme-accent-soft);
+}
+
+.theme-my-custom-theme input::placeholder {
+  color: var(--text-muted);
+}
+

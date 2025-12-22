@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
-import { useTheme, type ThemeId, type BackgroundType } from '../context/ThemeContext';
+import { useTheme, type BackgroundType } from '../context/ThemeContext';
 import { showToast } from '../components/Toast';
 import AlertSettings from '../components/AlertSettings';
 import type { SiteSettings, SocialLink, GroupDimension } from '../types';
@@ -124,8 +124,8 @@ interface ThemeSettingsSectionProps {
 
 function ThemeSettingsSection({ isAuthenticated, token, siteSettings, onSiteSettingsChange }: ThemeSettingsSectionProps) {
   const { i18n } = useTranslation();
-  const { themeId, setTheme, themes, background, setBackground, backgroundUrl, refreshBackground, getServerSettings } = useTheme();
-  const [hoveredTheme, setHoveredTheme] = useState<ThemeId | null>(null);
+  const { themeId, setTheme, themes, builtinThemes, installedThemes, installTheme, uninstallTheme, background, setBackground, backgroundUrl, refreshBackground, getServerSettings } = useTheme();
+  const [hoveredTheme, setHoveredTheme] = useState<string | null>(null);
   const [customUrl, setCustomUrl] = useState(background.customUrl || '');
   const [unsplashQuery, setUnsplashQuery] = useState(background.unsplashQuery || 'nature,landscape');
   const [solidColor, setSolidColor] = useState(background.solidColor || '#1a1a2e');
@@ -134,6 +134,60 @@ function ThemeSettingsSection({ isAuthenticated, token, siteSettings, onSiteSett
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const isZh = i18n.language.startsWith('zh');
+  
+  // Theme installation states
+  const [showThemeInstaller, setShowThemeInstaller] = useState(false);
+  const [themeSource, setThemeSource] = useState('');
+  const [themeRef, setThemeRef] = useState('');
+  const [isInstalling, setIsInstalling] = useState(false);
+  const [installError, setInstallError] = useState<string | null>(null);
+  const [installSuccess, setInstallSuccess] = useState<string | null>(null);
+
+  // Handle theme installation
+  const handleInstallTheme = async () => {
+    if (!themeSource.trim()) {
+      setInstallError(isZh ? '请输入主题来源' : 'Please enter theme source');
+      return;
+    }
+
+    setIsInstalling(true);
+    setInstallError(null);
+    setInstallSuccess(null);
+
+    try {
+      const result = await installTheme(themeSource.trim(), themeRef.trim() || undefined);
+      
+      if (result.success) {
+        setInstallSuccess(isZh 
+          ? `主题 "${result.theme?.manifest.name}" 安装成功！` 
+          : `Theme "${result.theme?.manifest.name}" installed successfully!`
+        );
+        setThemeSource('');
+        setThemeRef('');
+        showToast(isZh ? '主题安装成功' : 'Theme installed successfully', 'success');
+      } else {
+        setInstallError(result.error || (isZh ? '安装失败' : 'Installation failed'));
+      }
+    } catch (e) {
+      setInstallError(e instanceof Error ? e.message : (isZh ? '未知错误' : 'Unknown error'));
+    } finally {
+      setIsInstalling(false);
+    }
+  };
+
+  // Handle theme uninstallation
+  const handleUninstallTheme = async (id: string, name: string) => {
+    if (!confirm(isZh ? `确定要卸载主题 "${name}" 吗？` : `Are you sure you want to uninstall "${name}"?`)) {
+      return;
+    }
+
+    const success = await uninstallTheme(id);
+    if (success) {
+      showToast(isZh ? `主题 "${name}" 已卸载` : `Theme "${name}" uninstalled`, 'success');
+    } else {
+      showToast(isZh ? '卸载失败' : 'Uninstall failed', 'error');
+    }
+  };
 
   // Save theme settings to server
   const saveThemeSettings = async () => {
@@ -305,6 +359,187 @@ function ThemeSettingsSection({ isAuthenticated, token, siteSettings, onSiteSett
             );
           })}
         </div>
+
+        {/* Install Theme Section */}
+        {isAuthenticated && (
+          <div className="mt-6 pt-6 border-t border-white/10">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-semibold text-white">
+                  {isZh ? '安装更多主题' : 'Install More Themes'}
+                </h3>
+                <p className="text-sm text-gray-400 mt-1">
+                  {isZh ? '从 GitHub 安装第三方主题' : 'Install third-party themes from GitHub'}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowThemeInstaller(!showThemeInstaller)}
+                className="px-4 py-2 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 text-sm font-medium transition-colors flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                {showThemeInstaller 
+                  ? (isZh ? '收起' : 'Hide') 
+                  : (isZh ? '安装主题' : 'Install Theme')}
+              </button>
+            </div>
+
+            {showThemeInstaller && (
+              <div className="space-y-4 p-4 rounded-xl bg-white/5 border border-white/10">
+                <p className="text-sm text-gray-400">
+                  {isZh 
+                    ? '从 GitHub 安装主题，支持以下格式：' 
+                    : 'Install themes from GitHub using these formats:'
+                  }
+                </p>
+                <ul className="text-xs text-gray-500 space-y-1 ml-4">
+                  <li><code className="bg-white/10 px-1.5 py-0.5 rounded">user/repo</code> - {isZh ? '仓库根目录' : 'Repository root'}</li>
+                  <li><code className="bg-white/10 px-1.5 py-0.5 rounded">user/repo/themes/my-theme</code> - {isZh ? '子目录' : 'Subdirectory'}</li>
+                  <li><code className="bg-white/10 px-1.5 py-0.5 rounded">user/repo@v1.0.0</code> - {isZh ? '指定版本/分支' : 'Specific version/branch'}</li>
+                  <li><code className="bg-white/10 px-1.5 py-0.5 rounded">https://example.com/theme.json</code> - {isZh ? '直接 URL' : 'Direct URL'}</li>
+                </ul>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">
+                      {isZh ? '主题来源' : 'Theme Source'} *
+                    </label>
+                    <input
+                      type="text"
+                      value={themeSource}
+                      onChange={(e) => setThemeSource(e.target.value)}
+                      placeholder="user/repo 或 https://..."
+                      disabled={isInstalling}
+                      className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-purple-500/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">
+                      {isZh ? '版本/分支 (可选)' : 'Version/Branch (optional)'}
+                    </label>
+                    <input
+                      type="text"
+                      value={themeRef}
+                      onChange={(e) => setThemeRef(e.target.value)}
+                      placeholder="main, v1.0.0, ..."
+                      disabled={isInstalling}
+                      className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-purple-500/50"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleInstallTheme}
+                  disabled={isInstalling || !themeSource.trim()}
+                  className={`
+                    w-full px-4 py-2.5 rounded-lg text-white text-sm font-medium transition-all flex items-center justify-center gap-2
+                    ${isInstalling || !themeSource.trim()
+                      ? 'bg-gray-600 cursor-not-allowed' 
+                      : 'bg-purple-500 hover:bg-purple-600'
+                    }
+                  `}
+                >
+                  {isInstalling ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      {isZh ? '安装中...' : 'Installing...'}
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      {isZh ? '安装主题' : 'Install Theme'}
+                    </>
+                  )}
+                </button>
+
+                {installError && (
+                  <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+                    {installError}
+                  </div>
+                )}
+                {installSuccess && (
+                  <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm">
+                    {installSuccess}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Installed Themes List */}
+            {installedThemes.length > 0 && (
+              <div className="mt-4 p-4 rounded-xl bg-white/5 border border-white/10">
+                <h4 className="font-medium text-white mb-3">
+                  {isZh ? '已安装的第三方主题' : 'Installed Third-party Themes'} ({installedThemes.length})
+                </h4>
+                <div className="space-y-3">
+                  {installedThemes.map((installed) => (
+                    <div key={installed.manifest.id} className="flex items-center gap-4 p-3 rounded-lg bg-white/5">
+                      <div 
+                        className="w-12 h-12 rounded-lg flex-shrink-0"
+                        style={{
+                          background: `linear-gradient(135deg, ${installed.manifest.preview.primary} 0%, ${installed.manifest.preview.secondary} 50%, ${installed.manifest.preview.accent} 100%)`
+                        }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-white">
+                          {isZh && installed.manifest.nameZh ? installed.manifest.nameZh : installed.manifest.name}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          v{installed.manifest.version} • {installed.manifest.author}
+                        </div>
+                        <div className="text-xs text-gray-400 truncate">
+                          {isZh && installed.manifest.descriptionZh 
+                            ? installed.manifest.descriptionZh 
+                            : installed.manifest.description
+                          }
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {themeId === installed.manifest.id ? (
+                          <span className="px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 text-xs">
+                            {isZh ? '使用中' : 'Active'}
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => setTheme(installed.manifest.id)}
+                            className="px-3 py-1 rounded bg-white/10 hover:bg-white/20 text-white text-xs transition-colors"
+                          >
+                            {isZh ? '使用' : 'Use'}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleUninstallTheme(installed.manifest.id, installed.manifest.name)}
+                          className="px-3 py-1 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs transition-colors"
+                        >
+                          {isZh ? '卸载' : 'Uninstall'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Theme Development Link */}
+            <div className="mt-4 text-center text-sm text-gray-500">
+              {isZh ? '想要创建自己的主题？' : 'Want to create your own theme?'}
+              <a 
+                href="https://github.com/user/vstats/blob/main/docs/THEME-DEVELOPMENT.md" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-purple-400 hover:text-purple-300 ml-1"
+              >
+                {isZh ? '查看主题开发指南' : 'View Theme Development Guide'}
+              </a>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Background Settings Card */}

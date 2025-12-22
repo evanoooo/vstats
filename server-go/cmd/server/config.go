@@ -215,6 +215,7 @@ type AppConfig struct {
 	AlertConfig       *AlertConfig      `json:"alert_config,omitempty"`
 	AuditLogSettings  *AuditLogSettings `json:"audit_log_settings,omitempty"`
 	GeoIPConfig       *GeoIPConfig      `json:"geoip_config,omitempty"`
+	InstalledThemes   []InstalledTheme  `json:"installed_themes,omitempty"` // External themes installed from GitHub
 }
 
 func getExeDir() string {
