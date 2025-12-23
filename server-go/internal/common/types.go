@@ -124,7 +124,12 @@ type GPU struct {
 }
 
 type PingMetrics struct {
-	Targets []PingTarget `json:"targets"`
+	Targets   []PingTarget    `json:"targets"`
+	Timestamp int64           `json:"timestamp,omitempty"` // Unix timestamp when ping was collected
+	Agg2Min   []PingTargetAgg `json:"agg_2min,omitempty"`  // 2-minute aggregated (for 24H)
+	Agg15Min  []PingTargetAgg `json:"agg_15min,omitempty"` // 15-minute aggregated (for 7D)
+	AggHourly []PingTargetAgg `json:"agg_hourly,omitempty"` // Hourly aggregated (for 30D)
+	AggDaily  []PingTargetAgg `json:"agg_daily,omitempty"`  // Daily aggregated (for 1Y)
 }
 
 type PingTarget struct {
@@ -135,6 +140,18 @@ type PingTarget struct {
 	LatencyMs  *float64 `json:"latency_ms"`
 	PacketLoss float64  `json:"packet_loss"`
 	Status     string   `json:"status"`
+}
+
+// PingTargetAgg represents aggregated ping data for a time bucket (computed by Agent)
+type PingTargetAgg struct {
+	Name         string  `json:"name"`
+	Host         string  `json:"host"`
+	Bucket       int64   `json:"bucket"`        // Bucket timestamp (e.g., unix_time / 120 for 2-min)
+	LatencySum   float64 `json:"latency_sum"`   // Sum of latencies
+	LatencyMax   float64 `json:"latency_max"`   // Max latency
+	LatencyCount int     `json:"latency_count"` // Number of samples
+	OkCount      int     `json:"ok_count"`      // Number of successful pings
+	FailCount    int     `json:"fail_count"`    // Number of failed pings
 }
 
 type PingTargetConfig struct {

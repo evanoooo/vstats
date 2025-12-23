@@ -367,6 +367,85 @@ func batchStoreMetrics(db *sql.DB, items []MetricsBufferItem) error {
 		return err
 	}
 	defer stmt2min.Close()
+
+	// Prepare statements for ping target data
+	// Use REPLACE logic (not accumulate) because:
+	// - Ping is collected every 10 seconds but metrics sent every 5 seconds
+	// - Same ping result may be sent twice, so we replace instead of accumulate
+	ping5secStmt, err := tx.Prepare(`
+		INSERT INTO ping_5sec (server_id, bucket, target_name, target_host, latency_sum, latency_max, latency_count, ok_count, fail_count)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(server_id, target_name, bucket) DO UPDATE SET
+			target_host = excluded.target_host,
+			latency_sum = excluded.latency_sum,
+			latency_max = excluded.latency_max,
+			latency_count = excluded.latency_count,
+			ok_count = excluded.ok_count,
+			fail_count = excluded.fail_count`)
+	if err != nil {
+		return err
+	}
+	defer ping5secStmt.Close()
+
+	ping2minStmt, err := tx.Prepare(`
+		INSERT INTO ping_2min (server_id, bucket, target_name, target_host, latency_sum, latency_max, latency_count, ok_count, fail_count)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(server_id, target_name, bucket) DO UPDATE SET
+			target_host = excluded.target_host,
+			latency_sum = excluded.latency_sum,
+			latency_max = excluded.latency_max,
+			latency_count = excluded.latency_count,
+			ok_count = excluded.ok_count,
+			fail_count = excluded.fail_count`)
+	if err != nil {
+		return err
+	}
+	defer ping2minStmt.Close()
+
+	ping15minStmt, err := tx.Prepare(`
+		INSERT INTO ping_15min_agg (server_id, bucket, target_name, target_host, latency_sum, latency_max, latency_count, ok_count, fail_count)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(server_id, target_name, bucket) DO UPDATE SET
+			target_host = excluded.target_host,
+			latency_sum = excluded.latency_sum,
+			latency_max = excluded.latency_max,
+			latency_count = excluded.latency_count,
+			ok_count = excluded.ok_count,
+			fail_count = excluded.fail_count`)
+	if err != nil {
+		return err
+	}
+	defer ping15minStmt.Close()
+
+	pingHourlyStmt, err := tx.Prepare(`
+		INSERT INTO ping_hourly_agg (server_id, bucket, target_name, target_host, latency_sum, latency_max, latency_count, ok_count, fail_count)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(server_id, target_name, bucket) DO UPDATE SET
+			target_host = excluded.target_host,
+			latency_sum = excluded.latency_sum,
+			latency_max = excluded.latency_max,
+			latency_count = excluded.latency_count,
+			ok_count = excluded.ok_count,
+			fail_count = excluded.fail_count`)
+	if err != nil {
+		return err
+	}
+	defer pingHourlyStmt.Close()
+
+	pingDailyStmt, err := tx.Prepare(`
+		INSERT INTO ping_daily_agg (server_id, bucket, target_name, target_host, latency_sum, latency_max, latency_count, ok_count, fail_count)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(server_id, target_name, bucket) DO UPDATE SET
+			target_host = excluded.target_host,
+			latency_sum = excluded.latency_sum,
+			latency_max = excluded.latency_max,
+			latency_count = excluded.latency_count,
+			ok_count = excluded.ok_count,
+			fail_count = excluded.fail_count`)
+	if err != nil {
+		return err
+	}
+	defer pingDailyStmt.Close()
 	
 	for _, item := range items {
 		metrics := item.Metrics
@@ -430,6 +509,70 @@ func batchStoreMetrics(db *sql.DB, items []MetricsBufferItem) error {
 			metrics.Network.TotalRx, metrics.Network.TotalTx,
 			pingVal, pingCnt,
 		)
+
+		// Store individual ping targets for history
+		if metrics.Ping != nil && len(metrics.Ping.Targets) > 0 {
+			// Use ping's own timestamp if available, otherwise use metrics timestamp
+			pingTimestamp := metrics.Timestamp.Unix()
+			if metrics.Ping.Timestamp > 0 {
+				pingTimestamp = metrics.Ping.Timestamp
+			}
+			pingBucket5sec := pingTimestamp / 5
+
+			// Store raw ping data to ping_5sec (5-second granularity, replace logic)
+			for _, target := range metrics.Ping.Targets {
+				latencyVal := float64(0)
+				latencyMax := float64(0)
+				latencyCnt := 0
+				if target.LatencyMs != nil {
+					latencyVal = *target.LatencyMs
+					latencyMax = *target.LatencyMs
+					latencyCnt = 1
+				}
+				okCnt := 0
+				failCnt := 0
+				if target.Status == "ok" {
+					okCnt = 1
+				} else {
+					failCnt = 1
+				}
+
+				ping5secStmt.Exec(
+					serverID, pingBucket5sec, target.Name, target.Host,
+					latencyVal, latencyMax, latencyCnt, okCnt, failCnt,
+				)
+			}
+
+			// Store Agent-computed aggregations (replace logic, Agent maintains avg)
+			// 2-minute (for 24H queries)
+			for _, agg := range metrics.Ping.Agg2Min {
+				ping2minStmt.Exec(
+					serverID, agg.Bucket, agg.Name, agg.Host,
+					agg.LatencySum, agg.LatencyMax, agg.LatencyCount, agg.OkCount, agg.FailCount,
+				)
+			}
+			// 15-minute (for 7D queries)
+			for _, agg := range metrics.Ping.Agg15Min {
+				ping15minStmt.Exec(
+					serverID, agg.Bucket, agg.Name, agg.Host,
+					agg.LatencySum, agg.LatencyMax, agg.LatencyCount, agg.OkCount, agg.FailCount,
+				)
+			}
+			// Hourly (for 30D queries)
+			for _, agg := range metrics.Ping.AggHourly {
+				pingHourlyStmt.Exec(
+					serverID, agg.Bucket, agg.Name, agg.Host,
+					agg.LatencySum, agg.LatencyMax, agg.LatencyCount, agg.OkCount, agg.FailCount,
+				)
+			}
+			// Daily (for 1Y queries)
+			for _, agg := range metrics.Ping.AggDaily {
+				pingDailyStmt.Exec(
+					serverID, agg.Bucket, agg.Name, agg.Host,
+					agg.LatencySum, agg.LatencyMax, agg.LatencyCount, agg.OkCount, agg.FailCount,
+				)
+			}
+		}
 	}
 	
 	return tx.Commit()
@@ -1736,31 +1879,33 @@ func storeMetricsInternal(db *sql.DB, serverID string, metrics *SystemMetrics) e
 			}
 
 			// UPSERT to ping_5sec (for 1h queries)
+			// Use REPLACE logic - same ping result may be sent multiple times
 			db.Exec(`
 				INSERT INTO ping_5sec (server_id, bucket, target_name, target_host, latency_sum, latency_max, latency_count, ok_count, fail_count)
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT(server_id, target_name, bucket) DO UPDATE SET
 					target_host = excluded.target_host,
-					latency_sum = latency_sum + excluded.latency_sum,
-					latency_max = MAX(latency_max, excluded.latency_max),
-					latency_count = latency_count + excluded.latency_count,
-					ok_count = ok_count + excluded.ok_count,
-					fail_count = fail_count + excluded.fail_count`,
+					latency_sum = excluded.latency_sum,
+					latency_max = excluded.latency_max,
+					latency_count = excluded.latency_count,
+					ok_count = excluded.ok_count,
+					fail_count = excluded.fail_count`,
 				serverID, bucket5sec, target.Name, target.Host,
 				latencyVal, latencyMax, latencyCnt, okCnt, failCnt,
 			)
 
 			// UPSERT to ping_2min (for 24h queries)
+			// Use REPLACE logic - same ping result may be sent multiple times
 			db.Exec(`
 				INSERT INTO ping_2min (server_id, bucket, target_name, target_host, latency_sum, latency_max, latency_count, ok_count, fail_count)
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT(server_id, target_name, bucket) DO UPDATE SET
 					target_host = excluded.target_host,
-					latency_sum = latency_sum + excluded.latency_sum,
-					latency_max = MAX(latency_max, excluded.latency_max),
-					latency_count = latency_count + excluded.latency_count,
-					ok_count = ok_count + excluded.ok_count,
-					fail_count = fail_count + excluded.fail_count`,
+					latency_sum = excluded.latency_sum,
+					latency_max = excluded.latency_max,
+					latency_count = excluded.latency_count,
+					ok_count = excluded.ok_count,
+					fail_count = excluded.fail_count`,
 				serverID, bucket5min, target.Name, target.Host,
 				latencyVal, latencyMax, latencyCnt, okCnt, failCnt,
 			)

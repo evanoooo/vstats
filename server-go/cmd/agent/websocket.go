@@ -38,7 +38,7 @@ type WebSocketClient struct {
 func NewWebSocketClient(config *AgentConfig) *WebSocketClient {
 	wsc := &WebSocketClient{
 		config:    config,
-		collector: NewMetricsCollector(),
+		collector: NewMetricsCollector(config.IntervalSecs),
 	}
 
 	// Initialize local storage if enabled

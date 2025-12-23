@@ -71,7 +71,10 @@ func collectPingMetrics(gatewayIP string, customTargets []PingTargetConfig) *Pin
 		return nil
 	}
 
-	return &PingMetrics{Targets: targets}
+	return &PingMetrics{
+		Targets:   targets,
+		Timestamp: time.Now().Unix(), // Record when ping was actually collected
+	}
 }
 
 // testTCPConnection tests TCP connection latency

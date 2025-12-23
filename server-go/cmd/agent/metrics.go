@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"vstats/internal/common"
+
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/disk"
 	"github.com/shirou/gopsutil/v4/host"
@@ -13,6 +15,22 @@ import (
 	"github.com/shirou/gopsutil/v4/mem"
 	gopsutilnet "github.com/shirou/gopsutil/v4/net"
 )
+
+// PingAggKey is the key for ping aggregation map
+type PingAggKey struct {
+	Name   string
+	Bucket int64
+}
+
+// PingAggData holds aggregated ping data for a bucket
+type PingAggData struct {
+	Host         string
+	LatencySum   float64
+	LatencyMax   float64
+	LatencyCount int
+	OkCount      int
+	FailCount    int
+}
 
 // MetricsCollector collects system metrics
 type MetricsCollector struct {
@@ -29,16 +47,31 @@ type MetricsCollector struct {
 	gatewayIP         string
 	ipAddresses       []string
 	dailyTrafficStats *DailyTrafficStats
+	pingInterval time.Duration // Ping collection interval (matches metrics interval)
+	// Ping aggregation (all granularities, computed by Agent)
+	pingAgg       map[string]map[PingAggKey]*PingAggData // key: "2min", "15min", "hourly", "daily"
+	pingAggMu     sync.RWMutex
 }
 
 // NewMetricsCollector creates a new metrics collector
-func NewMetricsCollector() *MetricsCollector {
+// intervalSecs specifies the collection interval (used for ping to match metrics sending)
+func NewMetricsCollector(intervalSecs uint64) *MetricsCollector {
+	if intervalSecs == 0 {
+		intervalSecs = 5 // Default to 5 seconds
+	}
 	mc := &MetricsCollector{
 		lastNetworkTime:   time.Now(),
 		lastDiskIO:        make(map[string]disk.IOCountersStat),
 		lastDiskIOTime:    time.Now(),
 		pingResults:       nil, // Will be set when ping targets are configured
 		dailyTrafficStats: loadDailyTrafficStats(),
+		pingInterval:      time.Duration(intervalSecs) * time.Second,
+		pingAgg: map[string]map[PingAggKey]*PingAggData{
+			"2min":   make(map[PingAggKey]*PingAggData),
+			"15min":  make(map[PingAggKey]*PingAggData),
+			"hourly": make(map[PingAggKey]*PingAggData),
+			"daily":  make(map[PingAggKey]*PingAggData),
+		},
 	}
 
 	// Get initial network totals
@@ -153,10 +186,16 @@ func (mc *MetricsCollector) Collect() SystemMetrics {
 	ping := mc.pingResults
 	mc.pingResultsMu.RUnlock()
 
-	// Only include ping if there are targets configured
+	// Include ping if there are targets configured
 	var pingPtr *PingMetrics
 	if ping != nil && len(ping.Targets) > 0 {
-		pingPtr = ping
+		// Create a copy with all granularity aggregation data
+		pingCopy := *ping
+		pingCopy.Agg2Min = mc.getPingAgg("2min")
+		pingCopy.Agg15Min = mc.getPingAgg("15min")
+		pingCopy.AggHourly = mc.getPingAgg("hourly")
+		pingCopy.AggDaily = mc.getPingAgg("daily")
+		pingPtr = &pingCopy
 	}
 
 	// GPU metrics
@@ -211,9 +250,26 @@ func (mc *MetricsCollector) Collect() SystemMetrics {
 	return metrics
 }
 
+// Bucket intervals in seconds for each granularity
+var pingBucketIntervals = map[string]int64{
+	"2min":   120,   // 2 minutes
+	"15min":  900,   // 15 minutes
+	"hourly": 3600,  // 1 hour
+	"daily":  86400, // 1 day
+}
+
+// How many buckets to keep for each granularity
+var pingBucketKeep = map[string]int64{
+	"2min":   2,  // Current + previous
+	"15min":  2,  // Current + previous
+	"hourly": 2,  // Current + previous
+	"daily":  2,  // Current + previous
+}
+
 // pingLoop runs in the background to periodically collect ping metrics
 func (mc *MetricsCollector) pingLoop() {
-	ticker := time.NewTicker(10 * time.Second)
+	// Use same interval as metrics sending for accurate sampling
+	ticker := time.NewTicker(mc.pingInterval)
 	defer ticker.Stop()
 
 	for range ticker.C {
@@ -223,8 +279,82 @@ func (mc *MetricsCollector) pingLoop() {
 
 		results := collectPingMetrics(mc.gatewayIP, customTargets)
 
+		// Update all granularity aggregations
+		if results != nil && len(results.Targets) > 0 {
+			mc.updatePingAggAll(results.Targets, results.Timestamp)
+		}
+
 		mc.pingResultsMu.Lock()
 		mc.pingResults = results
 		mc.pingResultsMu.Unlock()
 	}
+}
+
+// updatePingAggAll updates ping aggregation for all granularities
+func (mc *MetricsCollector) updatePingAggAll(targets []PingTarget, timestamp int64) {
+	mc.pingAggMu.Lock()
+	defer mc.pingAggMu.Unlock()
+
+	for granularity, interval := range pingBucketIntervals {
+		bucket := timestamp / interval
+		aggMap := mc.pingAgg[granularity]
+
+		// Clean up old buckets
+		minBucket := bucket - pingBucketKeep[granularity]
+		for key := range aggMap {
+			if key.Bucket < minBucket {
+				delete(aggMap, key)
+			}
+		}
+
+		// Update aggregation for each target
+		for _, target := range targets {
+			key := PingAggKey{Name: target.Name, Bucket: bucket}
+			agg, exists := aggMap[key]
+			if !exists {
+				agg = &PingAggData{Host: target.Host}
+				aggMap[key] = agg
+			}
+
+			// Accumulate data
+			if target.LatencyMs != nil {
+				agg.LatencySum += *target.LatencyMs
+				if *target.LatencyMs > agg.LatencyMax {
+					agg.LatencyMax = *target.LatencyMs
+				}
+				agg.LatencyCount++
+			}
+			if target.Status == "ok" {
+				agg.OkCount++
+			} else {
+				agg.FailCount++
+			}
+		}
+	}
+}
+
+// getPingAgg returns aggregation data for a specific granularity
+func (mc *MetricsCollector) getPingAgg(granularity string) []common.PingTargetAgg {
+	mc.pingAggMu.RLock()
+	defer mc.pingAggMu.RUnlock()
+
+	aggMap, exists := mc.pingAgg[granularity]
+	if !exists {
+		return nil
+	}
+
+	var result []common.PingTargetAgg
+	for key, agg := range aggMap {
+		result = append(result, common.PingTargetAgg{
+			Name:         key.Name,
+			Host:         agg.Host,
+			Bucket:       key.Bucket,
+			LatencySum:   agg.LatencySum,
+			LatencyMax:   agg.LatencyMax,
+			LatencyCount: agg.LatencyCount,
+			OkCount:      agg.OkCount,
+			FailCount:    agg.FailCount,
+		})
+	}
+	return result
 }
