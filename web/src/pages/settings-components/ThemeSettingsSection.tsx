@@ -95,8 +95,8 @@ export function ThemeSettingsSection({
     }
   };
 
-  // Save theme settings to server
-  const saveThemeSettings = async () => {
+  // Save theme settings to server (optionally with a specific theme ID)
+  const saveThemeSettings = async (overrideThemeId?: string) => {
     if (!isAuthenticated || !token) {
       showToast(isZh ? '请先登录' : 'Please login first', 'error');
       return;
@@ -105,6 +105,10 @@ export function ThemeSettingsSection({
     setSaving(true);
     try {
       const themeSettings = getServerSettings();
+      // If an override theme ID is provided, use it instead
+      if (overrideThemeId) {
+        themeSettings.theme_id = overrideThemeId;
+      }
       const updatedSiteSettings = {
         ...siteSettings,
         theme: themeSettings,
@@ -132,6 +136,15 @@ export function ThemeSettingsSection({
       showToast(isZh ? '保存失败' : 'Failed to save', 'error');
     }
     setSaving(false);
+  };
+
+  // Handle theme selection - sets theme locally and saves to server
+  const handleThemeSelect = (newThemeId: string) => {
+    setTheme(newThemeId);
+    // Auto-save to server if authenticated
+    if (isAuthenticated && token) {
+      saveThemeSettings(newThemeId);
+    }
   };
 
   const handleBackgroundTypeChange = (type: BackgroundType) => {
@@ -191,7 +204,7 @@ export function ThemeSettingsSection({
             return (
               <button
                 key={theme.id}
-                onClick={() => setTheme(theme.id)}
+                onClick={() => handleThemeSelect(theme.id)}
                 onMouseEnter={() => setHoveredTheme(theme.id)}
                 onMouseLeave={() => setHoveredTheme(null)}
                 className={`
@@ -473,7 +486,7 @@ export function ThemeSettingsSection({
                           </span>
                         ) : (
                           <button
-                            onClick={() => setTheme(installed.manifest.id)}
+                            onClick={() => handleThemeSelect(installed.manifest.id)}
                             className="px-3 py-1 rounded bg-white/10 hover:bg-white/20 text-white text-xs transition-colors"
                           >
                             {isZh ? '使用' : 'Use'}

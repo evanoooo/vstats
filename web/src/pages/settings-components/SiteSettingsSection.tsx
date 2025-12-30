@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { SiteSettings, SocialLink } from '../../types';
 import { sanitizeSiteSettings } from '../../utils/security';
+import { useTheme } from '../../context/ThemeContext';
 import { PLATFORM_OPTIONS } from './constants';
 
 export interface SiteSettingsSectionProps {
@@ -21,6 +22,7 @@ export function SiteSettingsSection({
   onSiteSettingsChange,
 }: SiteSettingsSectionProps) {
   const { t } = useTranslation();
+  const { getServerSettings } = useTheme();
   const [showSiteSettings, setShowSiteSettings] = useState(false);
   const [siteSettingsSaving, setSiteSettingsSaving] = useState(false);
   const [siteSettingsSuccess, setSiteSettingsSuccess] = useState(false);
@@ -29,7 +31,13 @@ export function SiteSettingsSection({
     setSiteSettingsSaving(true);
     setSiteSettingsSuccess(false);
 
-    const sanitizedSettings = sanitizeSiteSettings(siteSettings);
+    // Include the latest theme settings from ThemeContext
+    const themeSettings = getServerSettings();
+    const settingsWithTheme = {
+      ...siteSettings,
+      theme: themeSettings,
+    };
+    const sanitizedSettings = sanitizeSiteSettings(settingsWithTheme);
 
     try {
       const res = await fetch('/api/settings/site', {
