@@ -167,24 +167,6 @@ func (e *AlertEngine) getServerStates() []serverState {
 		servers = append(servers, state)
 	}
 	
-	// Add local server
-	localMetrics := CollectMetrics()
-	localState := serverState{
-		ID:       "local",
-		Name:     config.LocalNode.Name,
-		Online:   true,
-		LastSeen: time.Now(),
-		CPU:      localMetrics.CPU.Usage,
-		Memory:   localMetrics.Memory.UsagePercent,
-	}
-	if localState.Name == "" {
-		localState.Name = "Local Server"
-	}
-	if len(localMetrics.Disks) > 0 {
-		localState.Disk = localMetrics.Disks[0].UsagePercent
-	}
-	servers = append(servers, localState)
-	
 	return servers
 }
 
@@ -541,7 +523,6 @@ func (e *AlertEngine) checkExpiryAlerts(config *AlertConfig) {
 	
 	e.state.ConfigMu.RLock()
 	servers := e.state.Config.Servers
-	localNode := e.state.Config.LocalNode
 	e.state.ConfigMu.RUnlock()
 	
 	now := time.Now()
@@ -566,18 +547,6 @@ func (e *AlertEngine) checkExpiryAlerts(config *AlertConfig) {
 		}
 		
 		e.checkServerExpiry(server.ID, server.Name, server.ExpiryDate, server.Provider, server.PriceAmount, server.PriceCurrency, server.PricePeriod, now, config)
-	}
-	
-	// Check local node if it has an expiry date
-	if localNode.ExpiryDate != "" {
-		localName := localNode.Name
-		if localName == "" {
-			localName = "Local Server"
-		}
-		// Skip if auto-renew is enabled and exclude_auto is true
-		if !(rule.ExcludeAuto && localNode.AutoRenew) {
-			e.checkServerExpiry("local", localName, localNode.ExpiryDate, localNode.Provider, localNode.PriceAmount, localNode.PriceCurrency, localNode.PricePeriod, now, config)
-		}
 	}
 }
 

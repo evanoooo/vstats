@@ -12,9 +12,34 @@
   z-index: 1000;
 }
 
+/* When custom background image is set */
+.globe-container.has-bg-image {
+  background: transparent;
+}
+
 .globe-container canvas {
   width: 100% !important;
   height: 100% !important;
+  position: relative;
+  z-index: 2;
+}
+
+/* Globe Background Image Layer */
+.globe-bg-image-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  transition: opacity 0.5s ease;
+}
+
+.globe-bg-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
 }
 
 /* Exit Fullscreen Button - Top Right */

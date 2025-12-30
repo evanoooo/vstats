@@ -35,6 +35,7 @@ export default {
     subtitle: 'Real-time Server Monitoring',
     serverDetails: 'Server Details',
     viewModeGrid: 'Grid',
+    viewModeDual: 'Dual',
     viewModeList: 'List',
     viewModeCompact: 'Compact',
     viewModeGlobe: '3D Globe',
@@ -58,6 +59,7 @@ export default {
     autoRenew: 'Auto Renew',
     price: 'Price',
     perMonth: '/mo',
+    perQuarter: '/qtr',
     perYear: '/yr',
     // Compact view headers
     node: 'NODE',
@@ -67,6 +69,8 @@ export default {
     cpu: 'CPU',
     mem: 'MEM',
     hdd: 'HDD',
+    system: 'System',
+    storage: 'Storage',
     // Tip badges
     tipBadge: {
       'cn3-opt': 'CN3 Optimized',
@@ -82,6 +86,9 @@ export default {
     onlineUsers: 'online',
     // Days
     days: 'Days',
+    // Affiliate
+    buy: 'Buy',
+    buyNow: 'Buy Now',
   },
 
   // Globe View
@@ -237,9 +244,6 @@ export default {
     updating: 'Updating...',
     agentOnline: 'Agent Online',
     agentOffline: 'Agent Offline',
-    // Local node
-    localNode: 'Local Node',
-    localNodeConfig: 'Local Node Configuration',
     // Probe settings
     probeSettings: 'Probe Settings',
     pingTargets: 'Ping Targets',

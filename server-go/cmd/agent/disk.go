@@ -90,8 +90,15 @@ func collectPhysicalDisks(currentIO map[string]disk.IOCountersStat, lastIO map[s
 					// NVMe: nvme0n1p1 -> nvme0n1
 					baseName = strings.Split(baseName, "p")[0]
 				} else {
-					// SATA/SCSI: sda1 -> sda
-					baseName = regexp.MustCompile(`^([^0-9]+)`).FindString(baseName)
+					// SATA/SCSI/VirtIO: sda1 -> sda, vda3 -> vda, xvda1 -> xvda
+					// Use regex to extract letters followed by optional letters/digits before the partition number
+					re := regexp.MustCompile(`^([a-z]+[a-z0-9]*?)(\d+)$`)
+					if matches := re.FindStringSubmatch(baseName); len(matches) == 3 {
+						baseName = matches[1]
+					} else {
+						// Fallback: extract non-digit prefix
+						baseName = regexp.MustCompile(`^([^0-9]+)`).FindString(baseName)
+					}
 				}
 
 				if diskMetrics, ok := physicalDisks[baseName]; ok {
@@ -145,8 +152,14 @@ func collectPhysicalDisks(currentIO map[string]disk.IOCountersStat, lastIO map[s
 									belongsToDisk = true
 								}
 							} else {
-								// SATA/SCSI: sda1 -> sda
-								baseName := regexp.MustCompile(`^([^0-9]+)`).FindString(ioName)
+								// SATA/SCSI/VirtIO: sda1 -> sda, vda3 -> vda
+								re := regexp.MustCompile(`^([a-z]+[a-z0-9]*?)(\d+)$`)
+								var baseName string
+								if matches := re.FindStringSubmatch(ioName); len(matches) == 3 {
+									baseName = matches[1]
+								} else {
+									baseName = regexp.MustCompile(`^([^0-9]+)`).FindString(ioName)
+								}
 								if baseName == d.Name {
 									belongsToDisk = true
 								}
@@ -363,9 +376,10 @@ func detectDiskType(diskName string) string {
 			scheduler := strings.TrimSpace(string(schedulerData))
 			// NVMe devices typically use "none" scheduler and show it as [none]
 			if strings.Contains(scheduler, "[none]") {
-				// Double check it's not a virtual device
+				// Double check it's not a virtual device or VirtIO disk
 				if !strings.HasPrefix(diskName, "loop") && !strings.HasPrefix(diskName, "ram") &&
-					!strings.HasPrefix(diskName, "dm-") {
+					!strings.HasPrefix(diskName, "dm-") && !strings.HasPrefix(diskName, "vd") &&
+					!strings.HasPrefix(diskName, "xvd") {
 					return "NVMe"
 				}
 			}

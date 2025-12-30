@@ -63,33 +63,6 @@ func (s *AppState) BroadcastSiteSettings(settings *SiteSettings) {
 }
 
 // ============================================================================
-// Local Node Configuration Handlers
-// ============================================================================
-
-func (s *AppState) GetLocalNodeConfig(c *gin.Context) {
-	s.ConfigMu.RLock()
-	defer s.ConfigMu.RUnlock()
-	c.JSON(http.StatusOK, s.Config.LocalNode)
-}
-
-func (s *AppState) UpdateLocalNodeConfig(c *gin.Context) {
-	var config LocalNodeConfig
-	if err := c.ShouldBindJSON(&config); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
-		return
-	}
-
-	s.ConfigMu.Lock()
-	s.Config.LocalNode = config
-	SaveConfig(s.Config)
-	s.ConfigMu.Unlock()
-
-	LogAuditFromContext(c, AuditActionLocalNodeUpdate, AuditCategorySettings, "settings", "local_node", "Local Node", "Local node config updated")
-
-	c.JSON(http.StatusOK, config)
-}
-
-// ============================================================================
 // Probe Settings Handlers
 // ============================================================================
 
@@ -110,10 +83,6 @@ func (s *AppState) UpdateProbeSettings(c *gin.Context) {
 	s.Config.ProbeSettings = settings
 	SaveConfig(s.Config)
 	s.ConfigMu.Unlock()
-
-	// Update local collector's ping targets
-	localCollector := GetLocalCollector()
-	localCollector.SetPingTargets(settings.PingTargets)
 
 	// Broadcast new ping targets to all connected agents
 	s.BroadcastPingTargets(settings.PingTargets)
@@ -146,4 +115,59 @@ func (s *AppState) BroadcastPingTargets(targets []common.PingTargetConfig) {
 			log.Printf("Failed to send ping targets to agent %s (channel full)", serverID)
 		}
 	}
+}
+
+// ============================================================================
+// Affiliate Provider Settings Handlers
+// ============================================================================
+
+func (s *AppState) GetAffProviders(c *gin.Context) {
+	s.ConfigMu.RLock()
+	defer s.ConfigMu.RUnlock()
+	
+	providers := s.Config.AffProviders
+	if providers == nil {
+		providers = []AffProvider{}
+	}
+	c.JSON(http.StatusOK, providers)
+}
+
+func (s *AppState) UpdateAffProviders(c *gin.Context) {
+	var providers []AffProvider
+	if err := c.ShouldBindJSON(&providers); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	s.ConfigMu.Lock()
+	s.Config.AffProviders = providers
+	SaveConfig(s.Config)
+	s.ConfigMu.Unlock()
+
+	LogAuditFromContext(c, AuditActionSettingsUpdate, AuditCategorySettings, "settings", "aff_providers", "Aff Providers", "Affiliate providers updated")
+
+	c.Status(http.StatusOK)
+}
+
+// GetAffProvidersPublic returns affiliate providers for public access (dashboard)
+func (s *AppState) GetAffProvidersPublic(c *gin.Context) {
+	s.ConfigMu.RLock()
+	defer s.ConfigMu.RUnlock()
+	
+	// Only return enabled providers with necessary fields
+	var publicProviders []map[string]interface{}
+	for _, p := range s.Config.AffProviders {
+		if p.Enabled {
+			publicProviders = append(publicProviders, map[string]interface{}{
+				"name":     p.Name,
+				"aff_link": p.AffLink,
+				"logo_url": p.LogoURL,
+			})
+		}
+	}
+	
+	if publicProviders == nil {
+		publicProviders = []map[string]interface{}{}
+	}
+	c.JSON(http.StatusOK, publicProviders)
 }

@@ -3,7 +3,7 @@ import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Stars, Preload } from '@react-three/drei';
 import * as THREE from 'three';
 import type { ServerState } from '../../hooks/useMetrics';
-import { useTheme } from '../../context/ThemeContext';
+import { useTheme, type BackgroundConfig } from '../../context/ThemeContext';
 import { Earth } from './Earth';
 import { ServerNode } from './ServerNode';
 import { PingBeam } from './PingBeam';
@@ -14,6 +14,8 @@ interface GlobeViewProps {
   servers: ServerState[];
   onServerClick?: (server: ServerState) => void;
   onExitFullscreen?: () => void;
+  backgroundUrl?: string | null;
+  background?: BackgroundConfig;
 }
 
 /**
@@ -171,10 +173,15 @@ function GlobeScene({
 /**
  * Main GlobeView component with Canvas and overlay
  */
-export function GlobeView({ servers, onServerClick, onExitFullscreen }: GlobeViewProps) {
-  const { isDark } = useTheme();
+export function GlobeView({ servers, onServerClick, onExitFullscreen, backgroundUrl, background }: GlobeViewProps) {
+  const { isDark, backgroundUrl: themeBackgroundUrl, background: themeBackground } = useTheme();
   const [selectedServer, setSelectedServer] = useState<ServerState | null>(null);
   const [hoveredServer, setHoveredServer] = useState<ServerState | null>(null);
+
+  // Use props if provided, otherwise fall back to theme context
+  const effectiveBackgroundUrl = backgroundUrl ?? themeBackgroundUrl;
+  const effectiveBackground = background ?? themeBackground;
+  const hasBackgroundImage = !!effectiveBackgroundUrl;
 
   const handleServerClick = useCallback((server: ServerState) => {
     setSelectedServer((prev) => (prev?.config.id === server?.config.id ? null : server));
@@ -190,7 +197,28 @@ export function GlobeView({ servers, onServerClick, onExitFullscreen }: GlobeVie
   }, []);
 
   return (
-    <div className="globe-container">
+    <div className={`globe-container${hasBackgroundImage ? ' has-bg-image' : ''}`}>
+      {/* Background Image Layer */}
+      {hasBackgroundImage && (
+        <>
+          <div 
+            className="globe-bg-image-layer"
+            style={{ 
+              backgroundImage: `url(${effectiveBackgroundUrl})`,
+              filter: `blur(${effectiveBackground?.blur || 0}px)`,
+              transform: 'scale(1.1)' // Prevent blur edges from showing
+            }}
+          />
+          <div 
+            className="globe-bg-overlay"
+            style={{ 
+              backgroundColor: isDark ? '#000000' : '#ffffff',
+              opacity: (100 - (effectiveBackground?.opacity || 100)) / 100
+            }}
+          />
+        </>
+      )}
+      
       {/* WebGL Canvas */}
       <Canvas
         camera={{

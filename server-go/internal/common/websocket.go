@@ -16,6 +16,13 @@ type MetricsMessage struct {
 	Metrics SystemMetrics `json:"metrics"`
 }
 
+// TrafficConfig contains traffic limit settings from server
+type TrafficConfig struct {
+	MonthlyLimitGB float64 `json:"monthly_limit_gb"` // Monthly traffic limit in GB (0 = unlimited)
+	ThresholdType  string  `json:"threshold_type"`   // "sum", "max", "up", "down"
+	ResetDay       int     `json:"reset_day"`        // Day of month to reset (1-28)
+}
+
 type ServerResponse struct {
 	Type        string             `json:"type"`
 	Status      string             `json:"status,omitempty"`
@@ -24,6 +31,8 @@ type ServerResponse struct {
 	DownloadURL string             `json:"download_url,omitempty"`
 	Force       bool               `json:"force,omitempty"`
 	PingTargets []PingTargetConfig `json:"ping_targets,omitempty"`
+	// Traffic config
+	TrafficConfig *TrafficConfig `json:"traffic_config,omitempty"`
 	// Batch metrics response fields
 	BatchID   string  `json:"batch_id,omitempty"`
 	Accepted  int     `json:"accepted,omitempty"`

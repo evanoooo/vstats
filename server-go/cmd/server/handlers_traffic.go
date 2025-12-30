@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -131,7 +133,40 @@ func (s *AppState) UpdateTrafficLimit(c *gin.Context) {
 	}
 	s.ConfigMu.Unlock()
 
+	// Notify the connected agent about traffic config update
+	s.SendTrafficConfigToAgent(req.ServerID, req.MonthlyLimitGB, req.ThresholdType, req.ResetDay)
+
 	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// SendTrafficConfigToAgent sends traffic config update to a specific connected agent
+func (s *AppState) SendTrafficConfigToAgent(serverID string, monthlyLimitGB float64, thresholdType string, resetDay int) {
+	msg := map[string]interface{}{
+		"type": "config",
+		"traffic_config": map[string]interface{}{
+			"monthly_limit_gb": monthlyLimitGB,
+			"threshold_type":   thresholdType,
+			"reset_day":        resetDay,
+		},
+	}
+	data, err := json.Marshal(msg)
+	if err != nil {
+		log.Printf("Failed to marshal traffic config: %v", err)
+		return
+	}
+
+	s.AgentConnsMu.RLock()
+	conn := s.AgentConns[serverID]
+	s.AgentConnsMu.RUnlock()
+
+	if conn != nil {
+		select {
+		case conn.SendChan <- data:
+			log.Printf("Sent traffic config update to agent %s", serverID)
+		default:
+			log.Printf("Failed to send traffic config to agent %s (channel full)", serverID)
+		}
+	}
 }
 
 // ResetServerTraffic resets traffic for a server
@@ -234,12 +269,6 @@ func (s *AppState) GetTrafficDaily(c *gin.Context) {
 		if server.ID == serverID {
 			serverName = server.Name
 			break
-		}
-	}
-	if serverID == "local" {
-		serverName = s.Config.LocalNode.Name
-		if serverName == "" {
-			serverName = "Local Server"
 		}
 	}
 	s.ConfigMu.RUnlock()

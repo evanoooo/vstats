@@ -24,6 +24,7 @@ type MetricsMessage = common.MetricsMessage
 type ServerResponse = common.ServerResponse
 type RegisterRequest = common.RegisterRequest
 type RegisterResponse = common.RegisterResponse
+type TrafficConfig = common.TrafficConfig
 
 // Batch metrics types for offline sync
 type BatchMetricsMessage = common.BatchMetricsMessage

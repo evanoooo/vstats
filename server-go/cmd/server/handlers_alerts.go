@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -292,31 +293,54 @@ func (s *AppState) GetAlerts(c *gin.Context) {
 	})
 }
 
-// GetAlertHistory returns historical alerts
+// GetAlertHistory returns historical alerts with pagination
 func (s *AppState) GetAlertHistory(c *gin.Context) {
 	serverID := c.Query("server_id")
 	alertType := c.Query("type")
-	limit := c.DefaultQuery("limit", "100")
+	pageStr := c.DefaultQuery("page", "1")
+	limitStr := c.DefaultQuery("limit", "20")
+
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit < 1 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	offset := (page - 1) * limit
 
 	db := dbWriter.GetDB()
 
-	query := `
-		SELECT id, alert_id, type, server_id, server_name, severity, value, threshold, message, started_at, resolved_at, duration, notified
-		FROM alert_history
-		WHERE 1=1`
+	// Build WHERE clause
+	whereClause := "WHERE 1=1"
 	args := []interface{}{}
 
 	if serverID != "" {
-		query += " AND server_id = ?"
+		whereClause += " AND server_id = ?"
 		args = append(args, serverID)
 	}
 	if alertType != "" {
-		query += " AND type = ?"
+		whereClause += " AND type = ?"
 		args = append(args, alertType)
 	}
 
-	query += " ORDER BY started_at DESC LIMIT ?"
-	args = append(args, limit)
+	// Get total count
+	countQuery := "SELECT COUNT(*) FROM alert_history " + whereClause
+	var total int
+	if err := db.QueryRow(countQuery, args...).Scan(&total); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get paginated results
+	query := `
+		SELECT id, alert_id, type, server_id, server_name, severity, value, threshold, message, started_at, resolved_at, duration, notified
+		FROM alert_history ` + whereClause + ` ORDER BY started_at DESC LIMIT ? OFFSET ?`
+	args = append(args, limit, offset)
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
@@ -353,7 +377,10 @@ func (s *AppState) GetAlertHistory(c *gin.Context) {
 		history = []AlertHistory{}
 	}
 
-	c.JSON(http.StatusOK, history)
+	c.JSON(http.StatusOK, gin.H{
+		"history": history,
+		"total":   total,
+	})
 }
 
 // MuteAlert mutes an active alert

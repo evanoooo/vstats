@@ -158,6 +158,8 @@ type AddServerRequest struct {
 	AutoRenew     bool              `json:"auto_renew,omitempty"`
 	TipBadge      string            `json:"tip_badge,omitempty"`
 	Notes         string            `json:"notes,omitempty"`
+	SaleStatus    string            `json:"sale_status,omitempty"`     // Sale status: "", "rent", "sell"
+	SaleContactURL string           `json:"sale_contact_url,omitempty"` // Contact URL for rent/sell
 }
 
 type UpdateServerRequest struct {
@@ -175,6 +177,8 @@ type UpdateServerRequest struct {
 	AutoRenew     *bool              `json:"auto_renew,omitempty"`
 	TipBadge      *string            `json:"tip_badge,omitempty"`
 	Notes         *string            `json:"notes,omitempty"`
+	SaleStatus    *string            `json:"sale_status,omitempty"`     // Sale status: "", "rent", "sell"
+	SaleContactURL *string           `json:"sale_contact_url,omitempty"` // Contact URL for rent/sell
 }
 
 // ============================================================================
@@ -296,6 +300,8 @@ type ServerMetricsUpdate struct {
 	TipBadge      string            `json:"tip_badge,omitempty"`
 	Notes         string            `json:"notes,omitempty"`
 	GeoIP         *ServerGeoIP      `json:"geoip,omitempty"`
+	SaleStatus    string            `json:"sale_status,omitempty"`    // Sale status: "", "rent", "sell"
+	SaleContactURL string           `json:"sale_contact_url,omitempty"` // Contact URL for rent/sell
 }
 
 type DeltaMessage struct {
@@ -441,7 +447,6 @@ const (
 	AuditActionSiteSettingsUpdate AuditLogAction = "site_settings_update"
 	AuditActionProbeSettingsUpdate AuditLogAction = "probe_settings_update"
 	AuditActionOAuthSettingsUpdate AuditLogAction = "oauth_settings_update"
-	AuditActionLocalNodeUpdate    AuditLogAction = "local_node_update"
 
 	// Alert actions
 	AuditActionAlertConfigUpdate  AuditLogAction = "alert_config_update"

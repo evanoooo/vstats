@@ -178,16 +178,18 @@ func (e *EmailNotifier) Send(title, message string) error {
 // ============================================================================
 
 type TelegramNotifier struct {
-	BotToken string
-	ChatID   string
-	Silent   bool
+	BotToken        string
+	ChatID          string
+	MessageThreadID string
+	Silent          bool
 }
 
 func NewTelegramNotifier(config map[string]string) (*TelegramNotifier, error) {
 	return &TelegramNotifier{
-		BotToken: config["bot_token"],
-		ChatID:   config["chat_id"],
-		Silent:   config["silent"] == "true",
+		BotToken:        config["bot_token"],
+		ChatID:          config["chat_id"],
+		MessageThreadID: config["message_thread_id"],
+		Silent:          config["silent"] == "true",
 	}, nil
 }
 
@@ -216,6 +218,9 @@ func (t *TelegramNotifier) Send(title, message string) error {
 		"chat_id":    t.ChatID,
 		"text":       text,
 		"parse_mode": "MarkdownV2",
+	}
+	if t.MessageThreadID != "" {
+		payload["message_thread_id"] = t.MessageThreadID
 	}
 	if t.Silent {
 		payload["disable_notification"] = true

@@ -3,7 +3,7 @@ import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { WebSocketProvider } from './context/WebSocketContext';
 import { ToastContainer } from './components/Toast';
-import Dashboard from './pages/Dashboard';
+import Dashboard from './pages/dashboard';
 import ServerDetail from './pages/ServerDetail';
 import Login from './pages/Login';
 import Settings from './pages/Settings';

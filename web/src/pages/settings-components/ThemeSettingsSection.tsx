@@ -43,7 +43,7 @@ export function ThemeSettingsSection({
   
   // Theme installation states
   const [showThemeInstaller, setShowThemeInstaller] = useState(false);
-  const [themeSource, setThemeSource] = useState('');
+  const [themeSource, setThemeSource] = useState('zsai001/vstats-theme/themes/daylight');
   const [themeRef, setThemeRef] = useState('');
   const [isInstalling, setIsInstalling] = useState(false);
   const [installError, setInstallError] = useState<string | null>(null);
@@ -293,18 +293,78 @@ export function ThemeSettingsSection({
 
             {showThemeInstaller && (
               <div className="space-y-4 p-4 rounded-xl bg-white/5 border border-white/10">
-                <p className="text-sm text-gray-400">
-                  {isZh 
-                    ? '从 GitHub 安装主题，支持以下格式：' 
-                    : 'Install themes from GitHub using these formats:'
-                  }
-                </p>
-                <ul className="text-xs text-gray-500 space-y-1 ml-4">
-                  <li><code className="bg-white/10 px-1.5 py-0.5 rounded">user/repo</code> - {isZh ? '仓库根目录' : 'Repository root'}</li>
-                  <li><code className="bg-white/10 px-1.5 py-0.5 rounded">user/repo/themes/my-theme</code> - {isZh ? '子目录' : 'Subdirectory'}</li>
-                  <li><code className="bg-white/10 px-1.5 py-0.5 rounded">user/repo@v1.0.0</code> - {isZh ? '指定版本/分支' : 'Specific version/branch'}</li>
-                  <li><code className="bg-white/10 px-1.5 py-0.5 rounded">https://example.com/theme.json</code> - {isZh ? '直接 URL' : 'Direct URL'}</li>
-                </ul>
+                {/* Recommended Themes */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    {isZh ? '推荐主题' : 'Recommended Themes'}
+                  </label>
+                  <div className="grid grid-cols-1 gap-2">
+                    {[
+                      { 
+                        source: 'zsai001/vstats-theme/themes/daylight', 
+                        name: 'Daylight', 
+                        nameZh: '日光',
+                        desc: 'Clean light theme',
+                        descZh: '清新明亮主题',
+                        colors: ['#f8fafc', '#3b82f6', '#10b981']
+                      },
+                    ].map((theme) => (
+                      <button
+                        key={theme.source}
+                        onClick={() => {
+                          setThemeSource(theme.source);
+                          setInstallError(null);
+                          setInstallSuccess(null);
+                        }}
+                        disabled={isInstalling}
+                        className={`
+                          flex items-center gap-3 p-3 rounded-lg border transition-all text-left
+                          ${themeSource === theme.source 
+                            ? 'border-purple-500 bg-purple-500/10' 
+                            : 'border-white/10 hover:border-white/30 bg-white/5'
+                          }
+                        `}
+                      >
+                        <div className="flex -space-x-1">
+                          {theme.colors.map((color, i) => (
+                            <div 
+                              key={i}
+                              className="w-5 h-5 rounded-full border-2 border-white/20"
+                              style={{ backgroundColor: color }}
+                            />
+                          ))}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-white">
+                            {isZh ? theme.nameZh : theme.name}
+                          </div>
+                          <div className="text-xs text-gray-400 truncate">
+                            {isZh ? theme.descZh : theme.desc}
+                          </div>
+                        </div>
+                        {themeSource === theme.source && (
+                          <svg className="w-4 h-4 text-purple-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="border-t border-white/10 pt-4">
+                  <p className="text-sm text-gray-400 mb-2">
+                    {isZh 
+                      ? '或从 GitHub 安装其他主题：' 
+                      : 'Or install other themes from GitHub:'
+                    }
+                  </p>
+                  <ul className="text-xs text-gray-500 space-y-1 ml-4 mb-3">
+                    <li><code className="bg-white/10 px-1.5 py-0.5 rounded">user/repo</code> - {isZh ? '仓库根目录' : 'Repository root'}</li>
+                    <li><code className="bg-white/10 px-1.5 py-0.5 rounded">user/repo/themes/my-theme</code> - {isZh ? '子目录' : 'Subdirectory'}</li>
+                    <li><code className="bg-white/10 px-1.5 py-0.5 rounded">user/repo@v1.0.0</code> - {isZh ? '指定版本/分支' : 'Specific version/branch'}</li>
+                  </ul>
+                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
@@ -436,7 +496,7 @@ export function ThemeSettingsSection({
             <div className="mt-4 text-center text-sm text-gray-500">
               {isZh ? '想要创建自己的主题？' : 'Want to create your own theme?'}
               <a 
-                href="https://github.com/user/vstats/blob/main/docs/THEME-DEVELOPMENT.md" 
+                href="https://github.com/zsai001/vstats/blob/main/docs/THEME-DEVELOPMENT.md" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="text-purple-400 hover:text-purple-300 ml-1"

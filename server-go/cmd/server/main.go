@@ -135,13 +135,6 @@ func main() {
 		DB:               db,
 	}
 
-	// Initialize local metrics collector with ping targets
-	localCollector := GetLocalCollector()
-	if len(config.ProbeSettings.PingTargets) > 0 {
-		localCollector.SetPingTargets(config.ProbeSettings.PingTargets)
-		fmt.Printf("📡 Ping targets configured: %d targets\n", len(config.ProbeSettings.PingTargets))
-	}
-
 	// Setup signal handler for config reload (SIGHUP)
 	SetupSignalHandler(state)
 
@@ -237,6 +230,7 @@ func main() {
 	r.GET("/api/wallpaper/unsplash", GetUnsplashWallpaper)
 	r.GET("/api/wallpaper/proxy", GetCustomWallpaper)
 	r.GET("/api/wallpaper/proxy/image", GetCustomWallpaperImage)
+	r.GET("/api/aff-providers", state.GetAffProvidersPublic) // Public: get enabled aff providers for dashboard
 	r.POST("/api/auth/login", state.Login)
 	r.GET("/api/auth/verify", AuthMiddleware(), state.VerifyToken)
 
@@ -276,8 +270,6 @@ func main() {
 		protected.POST("/api/auth/password", state.ChangePassword)
 		protected.POST("/api/agent/register", state.RegisterAgent)
 		protected.PUT("/api/settings/site", state.UpdateSiteSettings)
-		protected.GET("/api/settings/local-node", state.GetLocalNodeConfig)
-		protected.PUT("/api/settings/local-node", state.UpdateLocalNodeConfig)
 		protected.GET("/api/settings/probe", state.GetProbeSettings)
 		protected.PUT("/api/settings/probe", state.UpdateProbeSettings)
 		protected.POST("/api/server/upgrade", UpgradeServer)
@@ -333,6 +325,9 @@ func main() {
 		protected.POST("/api/themes/install", state.InstallTheme)
 		protected.DELETE("/api/themes/:id", state.UninstallTheme)
 		protected.GET("/api/themes/:id/check-update", state.CheckThemeUpdate)
+		// Affiliate provider management
+		protected.GET("/api/settings/aff-providers", state.GetAffProviders)
+		protected.PUT("/api/settings/aff-providers", state.UpdateAffProviders)
 		protected.POST("/api/geoip/cache/clear", state.ClearGeoIPCache)
 		protected.GET("/api/servers/:id/geoip", state.GetServerGeoIP)
 		// Asset management
@@ -606,45 +601,8 @@ func metricsBroadcastLoop(state *AppState) {
 		}
 		state.AgentMetricsMu.RUnlock()
 
-		// Collect local metrics ONCE
-		localMetrics := CollectMetrics()
-
 		// === Build delta updates for connected dashboards ===
 		var deltaUpdates []CompactServerUpdate
-
-		// Check local server
-		localCompact := CompactMetricsFromSystem(&localMetrics)
-		state.LastSentMu.Lock()
-		localPrev := state.LastSent.Servers["local"]
-		state.LastSentMu.Unlock()
-
-		localChanged := localPrev == nil || localCompact.HasChanged(localPrev.Metrics)
-		if localChanged {
-			var diffMetrics *CompactMetrics
-			if localPrev != nil {
-				diffMetrics = localCompact.Diff(localPrev.Metrics)
-			} else {
-				diffMetrics = localCompact
-			}
-
-			if !diffMetrics.IsEmpty() {
-				deltaUpdates = append(deltaUpdates, CompactServerUpdate{
-					ID: "local",
-					On: boolPtr(true),
-					M:  diffMetrics,
-				})
-			}
-
-			state.LastSentMu.Lock()
-			state.LastSent.Servers["local"] = &struct {
-				Online  bool
-				Metrics *CompactMetrics
-			}{
-				Online:  true,
-				Metrics: localCompact,
-			}
-			state.LastSentMu.Unlock()
-		}
 
 		// Check remote servers
 		for _, server := range config.Servers {
@@ -718,7 +676,7 @@ func metricsBroadcastLoop(state *AppState) {
 		}
 
 		// === Refresh snapshot using already collected data ===
-		state.RefreshSnapshotWithData(config, agentMetrics, &localMetrics)
+		state.RefreshSnapshotWithData(config, agentMetrics)
 	}
 }
 

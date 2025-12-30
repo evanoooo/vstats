@@ -25,6 +25,16 @@ type DailyTrafficStats struct {
 	DailyRx      uint64    `json:"daily_rx"`     // Daily RX bytes (calculated)
 	DailyTx      uint64    `json:"daily_tx"`     // Daily TX bytes (calculated)
 	lastSaveTime time.Time // Last time stats were saved
+	
+	// Billing period tracking (based on server config)
+	BillingPeriodStart string  `json:"billing_period_start,omitempty"` // Format: YYYY-MM-DD
+	PeriodStartRx      uint64  `json:"period_start_rx,omitempty"`      // Total RX at billing period start
+	PeriodStartTx      uint64  `json:"period_start_tx,omitempty"`      // Total TX at billing period start
+	PeriodRx           uint64  `json:"period_rx,omitempty"`            // Billing period RX bytes
+	PeriodTx           uint64  `json:"period_tx,omitempty"`            // Billing period TX bytes
+	MonthlyLimitGB     float64 `json:"monthly_limit_gb,omitempty"`     // Monthly limit in GB (0 = unlimited)
+	ThresholdType      string  `json:"threshold_type,omitempty"`       // "sum", "max", "up", "down"
+	ResetDay           int     `json:"reset_day,omitempty"`            // Day of month to reset (1-28)
 }
 
 // getDailyTrafficStatsPath returns the path to the daily traffic stats file
@@ -119,6 +129,9 @@ func (dts *DailyTrafficStats) updateDailyTraffic(totalRx, totalTx uint64) (daily
 		}
 	}
 
+	// Also update billing period traffic
+	dts.updateBillingPeriodTraffic(totalRx, totalTx)
+
 	// Save if needed
 	if shouldSave {
 		dts.lastSaveTime = now
@@ -135,6 +148,113 @@ func (dts *DailyTrafficStats) getDailyTraffic() (dailyRx, dailyTx uint64) {
 	dts.mu.RLock()
 	defer dts.mu.RUnlock()
 	return dts.DailyRx, dts.DailyTx
+}
+
+// SetTrafficConfig updates the traffic config from server
+func (dts *DailyTrafficStats) SetTrafficConfig(monthlyLimitGB float64, thresholdType string, resetDay int) {
+	dts.mu.Lock()
+	defer dts.mu.Unlock()
+	
+	dts.MonthlyLimitGB = monthlyLimitGB
+	dts.ThresholdType = thresholdType
+	if resetDay < 1 || resetDay > 28 {
+		resetDay = 1
+	}
+	dts.ResetDay = resetDay
+	
+	// Force save after config update
+	go dts.save()
+}
+
+// getBillingPeriodStart calculates the billing period start date based on reset day
+func getBillingPeriodStart(resetDay int, now time.Time) time.Time {
+	year, month, day := now.Date()
+	
+	if day >= resetDay {
+		// Current billing period started this month
+		return time.Date(year, month, resetDay, 0, 0, 0, 0, now.Location())
+	} else {
+		// Current billing period started last month
+		lastMonth := now.AddDate(0, -1, 0)
+		return time.Date(lastMonth.Year(), lastMonth.Month(), resetDay, 0, 0, 0, 0, now.Location())
+	}
+}
+
+// updateBillingPeriodTraffic updates billing period traffic based on reset day
+func (dts *DailyTrafficStats) updateBillingPeriodTraffic(totalRx, totalTx uint64) (periodRx, periodTx uint64) {
+	// If no reset day configured, return 0
+	if dts.ResetDay == 0 {
+		return 0, 0
+	}
+	
+	now := time.Now()
+	periodStart := getBillingPeriodStart(dts.ResetDay, now)
+	periodStartStr := periodStart.Format("2006-01-02")
+	
+	// Check if we're in a new billing period
+	if dts.BillingPeriodStart != periodStartStr {
+		// New billing period: reset counters
+		dts.BillingPeriodStart = periodStartStr
+		dts.PeriodStartRx = totalRx
+		dts.PeriodStartTx = totalTx
+		dts.PeriodRx = 0
+		dts.PeriodTx = 0
+	} else {
+		// Same billing period: calculate usage
+		if totalRx >= dts.PeriodStartRx {
+			dts.PeriodRx = totalRx - dts.PeriodStartRx
+		} else {
+			// Counter wrapped, reset baseline
+			dts.PeriodStartRx = totalRx
+			dts.PeriodRx = 0
+		}
+		
+		if totalTx >= dts.PeriodStartTx {
+			dts.PeriodTx = totalTx - dts.PeriodStartTx
+		} else {
+			// Counter wrapped, reset baseline
+			dts.PeriodStartTx = totalTx
+			dts.PeriodTx = 0
+		}
+	}
+	
+	return dts.PeriodRx, dts.PeriodTx
+}
+
+// GetBillingPeriodUsage returns the current billing period usage based on threshold type
+func (dts *DailyTrafficStats) GetBillingPeriodUsage() (usageGB float64, limitGB float64, usagePercent float64) {
+	dts.mu.RLock()
+	defer dts.mu.RUnlock()
+	
+	if dts.ResetDay == 0 || dts.MonthlyLimitGB == 0 {
+		return 0, 0, 0
+	}
+	
+	var usageBytes uint64
+	switch dts.ThresholdType {
+	case "sum":
+		usageBytes = dts.PeriodRx + dts.PeriodTx
+	case "max":
+		if dts.PeriodRx > dts.PeriodTx {
+			usageBytes = dts.PeriodRx
+		} else {
+			usageBytes = dts.PeriodTx
+		}
+	case "up":
+		usageBytes = dts.PeriodTx
+	case "down":
+		usageBytes = dts.PeriodRx
+	default:
+		usageBytes = dts.PeriodRx + dts.PeriodTx
+	}
+	
+	usageGB = float64(usageBytes) / (1024 * 1024 * 1024)
+	limitGB = dts.MonthlyLimitGB
+	if limitGB > 0 {
+		usagePercent = (usageGB / limitGB) * 100
+	}
+	
+	return usageGB, limitGB, usagePercent
 }
 
 // detectGateway detects the default gateway IP address

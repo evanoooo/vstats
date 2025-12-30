@@ -42,6 +42,8 @@ func (s *AppState) AddServer(c *gin.Context) {
 		AutoRenew:     req.AutoRenew,
 		TipBadge:      req.TipBadge,
 		Notes:         req.Notes,
+		SaleStatus:    req.SaleStatus,
+		SaleContactURL: req.SaleContactURL,
 	}
 
 	s.ConfigMu.Lock()
@@ -136,6 +138,12 @@ func (s *AppState) UpdateServer(c *gin.Context) {
 		}
 		if req.Notes != nil {
 			s.Config.Servers[i].Notes = *req.Notes
+		}
+		if req.SaleStatus != nil {
+			s.Config.Servers[i].SaleStatus = *req.SaleStatus
+		}
+		if req.SaleContactURL != nil {
+			s.Config.Servers[i].SaleContactURL = *req.SaleContactURL
 		}
 		updated = &s.Config.Servers[i]
 		break
@@ -247,11 +255,6 @@ func (s *AppState) DeleteGroup(c *gin.Context) {
 		if s.Config.Servers[i].GroupID == id {
 			s.Config.Servers[i].GroupID = ""
 		}
-	}
-
-	// Clear group_id from local node if it had this group
-	if s.Config.LocalNode.GroupID == id {
-		s.Config.LocalNode.GroupID = ""
 	}
 
 	SaveConfig(s.Config)
@@ -369,11 +372,6 @@ func (s *AppState) DeleteDimension(c *gin.Context) {
 		if s.Config.Servers[i].GroupValues != nil {
 			delete(s.Config.Servers[i].GroupValues, id)
 		}
-	}
-
-	// Clear from local node
-	if s.Config.LocalNode.GroupValues != nil {
-		delete(s.Config.LocalNode.GroupValues, id)
 	}
 
 	SaveConfig(s.Config)
@@ -497,15 +495,6 @@ func (s *AppState) DeleteOption(c *gin.Context) {
 				if v == optID {
 					delete(s.Config.Servers[i].GroupValues, k)
 				}
-			}
-		}
-	}
-
-	// Clear from local node
-	if s.Config.LocalNode.GroupValues != nil {
-		for k, v := range s.Config.LocalNode.GroupValues {
-			if v == optID {
-				delete(s.Config.LocalNode.GroupValues, k)
 			}
 		}
 	}

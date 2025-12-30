@@ -24,23 +24,6 @@ var (
 	jwtSecretMu sync.RWMutex
 )
 
-type LocalNodeConfig struct {
-	Name         string            `json:"name"`
-	Location     string            `json:"location"`
-	Provider     string            `json:"provider"`
-	Tag          string            `json:"tag"`
-	GroupID      string            `json:"group_id,omitempty"`     // Deprecated, for backward compatibility
-	GroupValues  map[string]string `json:"group_values,omitempty"` // dimension_id -> option_id
-	PriceAmount  string            `json:"price_amount,omitempty"`
-	PricePeriod  string            `json:"price_period,omitempty"`
-	PriceCurrency string           `json:"price_currency,omitempty"` // Currency code: USD, CNY, EUR, etc.
-	PurchaseDate string            `json:"purchase_date,omitempty"`
-	ExpiryDate   string            `json:"expiry_date,omitempty"`    // When the service expires
-	AutoRenew    bool              `json:"auto_renew,omitempty"`     // Whether auto-renewal is enabled
-	TipBadge     string            `json:"tip_badge,omitempty"`
-	Notes        string            `json:"notes,omitempty"`          // Additional notes
-}
-
 // BackgroundConfig represents background settings for the site theme
 type BackgroundConfig struct {
 	Type          string `json:"type"` // gradient, bing, unsplash, custom, solid
@@ -189,6 +172,8 @@ type RemoteServer struct {
 	TipBadge     string            `json:"tip_badge,omitempty"`
 	Notes        string            `json:"notes,omitempty"`          // Additional notes
 	GeoIP        *ServerGeoIP      `json:"geoip,omitempty"`
+	SaleStatus   string            `json:"sale_status,omitempty"`    // Sale status: "", "rent", "sell"
+	SaleContactURL string          `json:"sale_contact_url,omitempty"` // Contact URL for rent/sell
 }
 
 // TLSConfig represents TLS/SSL configuration
@@ -196,6 +181,15 @@ type TLSConfig struct {
 	Enabled bool   `json:"enabled"`
 	Cert    string `json:"cert,omitempty"` // Path to certificate file
 	Key     string `json:"key,omitempty"`  // Path to private key file
+}
+
+// AffProvider represents an affiliate provider configuration
+type AffProvider struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`          // Provider name to match (e.g., "Vultr", "DigitalOcean")
+	AffLink  string `json:"aff_link"`      // Affiliate link URL
+	LogoURL  string `json:"logo_url,omitempty"` // Custom logo URL (optional)
+	Enabled  bool   `json:"enabled"`
 }
 
 type AppConfig struct {
@@ -209,13 +203,13 @@ type AppConfig struct {
 	Groups            []ServerGroup     `json:"groups,omitempty"` // Deprecated, for backward compatibility
 	GroupDimensions   []GroupDimension  `json:"group_dimensions,omitempty"`
 	SiteSettings      SiteSettings      `json:"site_settings"`
-	LocalNode         LocalNodeConfig   `json:"local_node"`
 	ProbeSettings     ProbeSettings     `json:"probe_settings"`
 	OAuth             *OAuthConfig      `json:"oauth,omitempty"`
 	AlertConfig       *AlertConfig      `json:"alert_config,omitempty"`
 	AuditLogSettings  *AuditLogSettings `json:"audit_log_settings,omitempty"`
 	GeoIPConfig       *GeoIPConfig      `json:"geoip_config,omitempty"`
 	InstalledThemes   []InstalledTheme  `json:"installed_themes,omitempty"` // External themes installed from GitHub
+	AffProviders      []AffProvider     `json:"aff_providers,omitempty"`    // Affiliate provider configurations
 }
 
 func getExeDir() string {
@@ -321,7 +315,6 @@ func NewAppConfigWithRandomPassword() (*AppConfig, string) {
 			SiteDescription: "Real-time Server Monitoring",
 			SocialLinks:     []SocialLink{},
 		},
-		LocalNode:     LocalNodeConfig{},
 		ProbeSettings: ProbeSettings{PingTargets: []common.PingTargetConfig{}},
 	}
 	return config, password

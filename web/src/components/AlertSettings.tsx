@@ -28,6 +28,7 @@ const CHANNEL_CONFIG_FIELDS: Record<string, { key: string; label: string; labelZ
   telegram: [
     { key: 'bot_token', label: 'Bot Token', labelZh: 'Bot Token', placeholder: '123456789:ABC...' },
     { key: 'chat_id', label: 'Chat ID', labelZh: '聊天 ID', placeholder: '-1001234567890' },
+    { key: 'message_thread_id', label: 'Topic ID (optional)', labelZh: '话题 ID (可选)', placeholder: '123 (for forum groups)' },
   ],
   discord: [
     { key: 'webhook_url', label: 'Webhook URL', labelZh: 'Webhook 地址', placeholder: 'https://discord.com/api/webhooks/...' },
@@ -65,6 +66,10 @@ export default function AlertSettings({ token }: AlertSettingsProps) {
   const [activeAlerts, setActiveAlerts] = useState<AlertState[]>([]);
   const [alertStats, setAlertStats] = useState<AlertStats | null>(null);
   const [alertHistory, setAlertHistory] = useState<AlertHistory[]>([]);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyLimit] = useState(20);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'channels' | 'rules' | 'history'>('overview');
   
   // Channel editing
@@ -109,22 +114,29 @@ export default function AlertSettings({ token }: AlertSettingsProps) {
     }
   }, [token]);
 
-  // Load alert history
+  // Load alert history with pagination
   const loadHistory = useCallback(async () => {
     if (!token) return;
     
+    setHistoryLoading(true);
     try {
-      const res = await fetch('/api/alerts/history?limit=50', {
+      const params = new URLSearchParams({
+        page: historyPage.toString(),
+        limit: historyLimit.toString(),
+      });
+      const res = await fetch(`/api/alerts/history?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
         const data = await res.json();
-        setAlertHistory(data || []);
+        setAlertHistory(data.history || []);
+        setHistoryTotal(data.total || 0);
       }
     } catch (err) {
       console.error('Failed to load alert history:', err);
     }
-  }, [token]);
+    setHistoryLoading(false);
+  }, [token, historyPage, historyLimit]);
 
   useEffect(() => {
     loadConfig();
@@ -261,7 +273,7 @@ export default function AlertSettings({ token }: AlertSettingsProps) {
     }
   };
 
-  // Test channel
+  // Test channel by ID
   const testChannel = async (channelId: string) => {
     if (!token) return;
     
@@ -281,6 +293,34 @@ export default function AlertSettings({ token }: AlertSettingsProps) {
       } else {
         const err = await res.json();
         showToast(err.error || (isZh ? '测试失败' : 'Test failed'), 'error');
+      }
+    } catch (err) {
+      showToast(isZh ? '测试失败' : 'Test failed', 'error');
+    } finally {
+      setTestingChannel(null);
+    }
+  };
+
+  // Test channel with inline config (before saving)
+  const testInlineChannel = async (type: string, channelConfig: Record<string, string>) => {
+    if (!token) return;
+    
+    setTestingChannel('inline');
+    try {
+      const res = await fetch('/api/alerts/channels/test', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ type, config: channelConfig }),
+      });
+      
+      if (res.ok) {
+        showToast(isZh ? '测试通知已发送！请检查您的设备' : 'Test notification sent! Check your device', 'success');
+      } else {
+        const err = await res.json();
+        showToast(err.error || (isZh ? '测试失败，请检查配置' : 'Test failed, check your config'), 'error');
       }
     } catch (err) {
       showToast(isZh ? '测试失败' : 'Test failed', 'error');
@@ -461,7 +501,9 @@ export default function AlertSettings({ token }: AlertSettingsProps) {
                   onChange={setEditingChannel}
                   onSave={() => updateChannel(editingChannel)}
                   onCancel={() => setEditingChannel(null)}
+                  onTest={() => testInlineChannel(editingChannel.type, editingChannel.config)}
                   saving={saving}
+                  testing={testingChannel === 'inline'}
                   isZh={isZh}
                 />
               ) : (
@@ -520,7 +562,9 @@ export default function AlertSettings({ token }: AlertSettingsProps) {
                 onChange={(c) => setNewChannel(c)}
                 onSave={addChannel}
                 onCancel={() => setNewChannel(null)}
+                onTest={() => testInlineChannel(newChannel.type!, newChannel.config || {})}
                 saving={saving}
+                testing={testingChannel === 'inline'}
                 isNew
                 isZh={isZh}
               />
@@ -723,42 +767,79 @@ export default function AlertSettings({ token }: AlertSettingsProps) {
       {/* History Tab */}
       {activeTab === 'history' && (
         <div className="space-y-3">
-          {alertHistory.length === 0 ? (
+          {historyLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <svg className="animate-spin h-8 w-8 text-cyan-400" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+            </div>
+          ) : alertHistory.length === 0 ? (
             <div className="nezha-card p-8 text-center">
               <div className="text-4xl mb-4">📜</div>
               <div className="text-gray-400">{isZh ? '暂无历史记录' : 'No history'}</div>
             </div>
           ) : (
-            alertHistory.map((h) => (
-              <div key={h.id} className="nezha-card p-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                        h.severity === 'critical' 
-                          ? 'bg-red-500/20 text-red-400' 
-                          : 'bg-yellow-500/20 text-yellow-400'
-                      }`}>
-                        {h.type}
-                      </span>
-                      <span className="text-sm text-gray-400">{h.server_name}</span>
-                      {h.resolved_at && (
-                        <span className="px-2 py-0.5 rounded text-xs bg-emerald-500/20 text-emerald-400">
-                          {isZh ? '已恢复' : 'Resolved'}
+            <>
+              {alertHistory.map((h) => (
+                <div key={h.id} className="nezha-card p-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                          h.severity === 'critical' 
+                            ? 'bg-red-500/20 text-red-400' 
+                            : 'bg-yellow-500/20 text-yellow-400'
+                        }`}>
+                          {h.type}
                         </span>
-                      )}
-                    </div>
-                    <div className="text-white text-sm">{h.message}</div>
-                    <div className="flex gap-4 text-xs text-gray-500 mt-1">
-                      <span>{isZh ? '开始' : 'Started'}: {new Date(h.started_at).toLocaleString()}</span>
-                      {h.duration > 0 && (
-                        <span>{isZh ? '持续' : 'Duration'}: {formatDuration(h.duration)}</span>
-                      )}
+                        <span className="text-sm text-gray-400">{h.server_name}</span>
+                        {h.resolved_at && (
+                          <span className="px-2 py-0.5 rounded text-xs bg-emerald-500/20 text-emerald-400">
+                            {isZh ? '已恢复' : 'Resolved'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-white text-sm">{h.message}</div>
+                      <div className="flex gap-4 text-xs text-gray-500 mt-1">
+                        <span>{isZh ? '开始' : 'Started'}: {new Date(h.started_at).toLocaleString()}</span>
+                        {h.duration > 0 && (
+                          <span>{isZh ? '持续' : 'Duration'}: {formatDuration(h.duration)}</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))
+              ))}
+
+              {/* Pagination */}
+              {Math.ceil(historyTotal / historyLimit) > 1 && (
+                <div className="flex items-center justify-between mt-6 pt-4 border-t border-white/10">
+                  <div className="text-sm text-gray-500">
+                    {isZh ? `共 ${historyTotal} 条记录` : `${historyTotal} records total`}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setHistoryPage(Math.max(1, historyPage - 1))}
+                      disabled={historyPage === 1}
+                      className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 text-sm transition-colors disabled:opacity-50"
+                    >
+                      {isZh ? '上一页' : 'Prev'}
+                    </button>
+                    <span className="text-gray-400 text-sm">
+                      {historyPage} / {Math.ceil(historyTotal / historyLimit)}
+                    </span>
+                    <button
+                      onClick={() => setHistoryPage(Math.min(Math.ceil(historyTotal / historyLimit), historyPage + 1))}
+                      disabled={historyPage === Math.ceil(historyTotal / historyLimit)}
+                      className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 text-sm transition-colors disabled:opacity-50"
+                    >
+                      {isZh ? '下一页' : 'Next'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -772,7 +853,9 @@ function ChannelForm({
   onChange,
   onSave,
   onCancel,
+  onTest,
   saving,
+  testing,
   isNew,
   isZh,
 }: {
@@ -780,11 +863,20 @@ function ChannelForm({
   onChange: (channel: NotificationChannel) => void;
   onSave: () => void;
   onCancel: () => void;
+  onTest: () => void;
   saving: boolean;
+  testing: boolean;
   isNew?: boolean;
   isZh: boolean;
 }) {
   const fields = CHANNEL_CONFIG_FIELDS[channel.type] || [];
+
+  // Check if minimum required fields are filled
+  const hasRequiredFields = () => {
+    const requiredFields = CHANNEL_CONFIG_FIELDS[channel.type] || [];
+    // At least check that some config is provided
+    return requiredFields.some(f => channel.config[f.key]?.trim());
+  };
 
   return (
     <div className="space-y-4">
@@ -849,6 +941,23 @@ function ChannelForm({
           className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 text-sm"
         >
           {isZh ? '取消' : 'Cancel'}
+        </button>
+        <button
+          onClick={onTest}
+          disabled={testing || !hasRequiredFields()}
+          className="px-4 py-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 text-sm disabled:opacity-50 flex items-center gap-2"
+        >
+          {testing ? (
+            <>
+              <span className="animate-spin">⏳</span>
+              {isZh ? '发送中...' : 'Sending...'}
+            </>
+          ) : (
+            <>
+              <span>🔔</span>
+              {isZh ? '测试通知' : 'Test'}
+            </>
+          )}
         </button>
         <button
           onClick={onSave}

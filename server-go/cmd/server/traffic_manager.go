@@ -232,10 +232,6 @@ func (m *TrafficManager) collectTraffic() {
 		
 		m.updateServerTraffic(server.ID, metrics.Metrics.Network.TotalTx, metrics.Metrics.Network.TotalRx, now, today)
 	}
-	
-	// Collect from local server
-	localMetrics := CollectMetrics()
-	m.updateServerTraffic("local", localMetrics.Network.TotalTx, localMetrics.Network.TotalRx, now, today)
 }
 
 // updateServerTraffic updates traffic for a single server
@@ -453,11 +449,6 @@ func (m *TrafficManager) GetAllStats() []TrafficStats {
 	for _, server := range config.Servers {
 		serverNames[server.ID] = server.Name
 	}
-	localName := config.LocalNode.Name
-	if localName == "" {
-		localName = "Local Server"
-	}
-	serverNames["local"] = localName
 	
 	stats := make([]TrafficStats, 0, len(m.stats))
 	for _, s := range m.stats {

@@ -157,6 +157,13 @@
   background: transparent !important;
 }
 
+/* Override html/body theme backgrounds when custom background image is set */
+html:has(.has-bg-image),
+html:has(.has-bg-image) body,
+html[class*="theme-"]:has(.has-bg-image) {
+  background: transparent !important;
+}
+
 /* ========================================
    Base Setup
    ======================================== */
@@ -2119,6 +2126,178 @@ button:active {
 
 .light-theme .hover\:bg-white\/20:hover {
   background-color: rgba(0, 0, 0, 0.15);
+}
+
+/* ========================================
+   Dual Card View Styles
+   ======================================== */
+.vps-dual-card {
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius-card);
+  border: 1px solid;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  transition: transform 0.2s, box-shadow 0.2s;
+  gap: 0.75rem;
+}
+
+.vps-dual-card--light {
+  background: var(--card-bg-light);
+  border-color: var(--card-border-light);
+  box-shadow: var(--card-shadow-light);
+}
+
+.vps-dual-card--dark {
+  background: var(--card-bg-dark);
+  border-color: var(--card-border-dark);
+  box-shadow: var(--card-shadow-dark);
+}
+
+.vps-dual-card:hover {
+  transform: translateY(-2px);
+}
+
+.vps-dual-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.vps-dual-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.vps-dual-status--online {
+  background: #22c55e;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+}
+
+.vps-dual-status--offline {
+  background: #ef4444;
+}
+
+.vps-dual-flag {
+  font-size: 1rem;
+}
+
+.vps-dual-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vps-dual-name--light {
+  color: var(--text-main-light);
+}
+
+.vps-dual-name--dark {
+  color: var(--text-main-dark);
+}
+
+.vps-dual-offline {
+  text-align: center;
+  padding: 1rem 0;
+  font-size: 0.75rem;
+}
+
+.vps-dual-metrics {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0.5rem;
+}
+
+.vps-dual-metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.vps-dual-metric-label {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.65rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.vps-dual-metric-label--light {
+  color: var(--text-muted-light);
+}
+
+.vps-dual-metric-label--dark {
+  color: var(--text-muted-dark);
+}
+
+.vps-dual-metric-value {
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+
+.vps-dual-metric-value--light {
+  color: var(--text-main-light);
+}
+
+.vps-dual-metric-value--dark {
+  color: var(--text-main-dark);
+}
+
+.vps-dual-bar {
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.vps-dual-bar--light {
+  background: var(--resource-track-light);
+}
+
+.vps-dual-bar--dark {
+  background: var(--resource-track-dark);
+}
+
+.vps-dual-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.vps-dual-footer {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.vps-dual-traffic {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.vps-dual-traffic--light {
+  background: rgba(34, 197, 94, 0.1);
+  color: #16a34a;
+}
+
+.vps-dual-traffic--dark {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
 }
 
 /* ========================================

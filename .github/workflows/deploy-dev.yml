@@ -1,0 +1,134 @@
+name: Deploy Dev
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+env:
+  GO_VERSION: '1.24'
+  NODE_VERSION: '20'
+  GOTOOLCHAIN: auto
+
+concurrency:
+  group: "deploy-dev"
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: server-go/go.mod
+          cache-dependency-path: server-go/go.sum
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build Go server binary
+        working-directory: server-go
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          VERSION="dev-${SHORT_SHA}"
+          echo "Building version: $VERSION"
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build \
+            -ldflags "-X main.ServerVersion=$VERSION" \
+            -o ../vstats-server \
+            -trimpath \
+            -a -installsuffix cgo \
+            ./cmd/server
+
+      - name: Build web frontend
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Create deployment package
+        run: |
+          mkdir -p deploy/web
+          cp vstats-server deploy/
+          cp -r web/dist/* deploy/web/
+          tar -czvf deploy.tar.gz -C deploy .
+          echo "Deployment package contents:"
+          tar -tzvf deploy.tar.gz
+
+      - name: Deploy to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: "deploy.tar.gz"
+          target: "/tmp"
+
+      - name: Install and restart service
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            echo "=== Starting deployment ==="
+            
+            # 检查文件是否上传成功
+            echo "Checking uploaded file..."
+            ls -la /tmp/deploy.tar.gz
+            
+            # 先停止服务
+            echo "Stopping vstats service..."
+            sudo systemctl stop vstats || true
+            
+            # 解压部署包
+            echo "Extracting deployment package..."
+            cd /tmp
+            tar -xzvf deploy.tar.gz
+            
+            # 检查解压内容
+            echo "Extracted files:"
+            ls -la /tmp/vstats-server
+            ls -la /tmp/web/
+            
+            # 部署 server 二进制
+            echo "Deploying server binary..."
+            cp -f /tmp/vstats-server /opt/vstats/vstats-server
+            chmod +x /opt/vstats/vstats-server
+            
+            # 验证二进制
+            echo "Verifying binary..."
+            ls -la /opt/vstats/vstats-server
+            md5sum /tmp/vstats-server /opt/vstats/vstats-server
+            
+            # 部署 web 前端
+            echo "Deploying web frontend..."
+            rm -rf /opt/vstats/web/assets /opt/vstats/web/logos /opt/vstats/web/textures
+            rm -f /opt/vstats/web/index.html /opt/vstats/web/vite.svg
+            cp -r /tmp/web/* /opt/vstats/web/
+            
+            # 清理
+            echo "Cleaning up..."
+            rm -rf /tmp/vstats-server /tmp/web /tmp/deploy.tar.gz
+            
+            # 启动服务
+            echo "Starting vstats service..."
+            sudo systemctl start vstats
+            sleep 2
+            
+            # 验证服务状态
+            echo "Service status:"
+            sudo systemctl status vstats --no-pager || true
+            
+            echo "=== Deployment complete ==="
+            echo "Server version: $(/opt/vstats/vstats-server --version 2>/dev/null || echo 'unknown')"

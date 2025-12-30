@@ -191,7 +191,7 @@ export function ThemeInstaller({ onClose }: ThemeInstallerProps) {
         <p>
           {isZh ? '想要创建自己的主题？' : 'Want to create your own theme?'}
           <a 
-            href="https://github.com/user/vstats/blob/main/docs/THEME-DEVELOPMENT.md" 
+            href="https://github.com/zsai001/vstats/blob/main/docs/THEME-DEVELOPMENT.md" 
             target="_blank" 
             rel="noopener noreferrer"
           >

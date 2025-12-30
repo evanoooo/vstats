@@ -333,3 +333,22 @@ export interface AlertHistory {
   duration: number;
   notified: boolean;
 }
+
+// ============================================================================
+// Affiliate Provider Types
+// ============================================================================
+
+export interface AffProvider {
+  id: string;
+  name: string;       // Provider name to match (e.g., "Vultr", "DigitalOcean")
+  aff_link: string;   // Affiliate link URL
+  logo_url?: string;  // Custom logo URL (optional)
+  enabled: boolean;
+}
+
+// Public affiliate provider (returned for dashboard)
+export interface PublicAffProvider {
+  name: string;
+  aff_link: string;
+  logo_url?: string;
+}

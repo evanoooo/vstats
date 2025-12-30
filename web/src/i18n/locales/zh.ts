@@ -35,6 +35,7 @@ export default {
     subtitle: '实时服务器监控',
     serverDetails: '服务器详情',
     viewModeGrid: '网格',
+    viewModeDual: '双排',
     viewModeList: '列表',
     viewModeCompact: '紧凑',
     viewModeGlobe: '3D 地球',
@@ -58,6 +59,7 @@ export default {
     autoRenew: '自动续费',
     price: '价格',
     perMonth: '/月',
+    perQuarter: '/季',
     perYear: '/年',
     // Compact view headers
     node: '节点',
@@ -67,6 +69,8 @@ export default {
     cpu: 'CPU',
     mem: '内存',
     hdd: '硬盘',
+    system: '系统',
+    storage: '存储',
     // Tip badges
     tipBadge: {
       'cn3-opt': '三网优化',
@@ -82,6 +86,9 @@ export default {
     onlineUsers: '人在线',
     // Days
     days: '天',
+    // Affiliate
+    buy: '购买',
+    buyNow: '立即购买',
   },
 
   // Globe View
@@ -237,9 +244,6 @@ export default {
     updating: '更新中...',
     agentOnline: '代理在线',
     agentOffline: '代理离线',
-    // Local node
-    localNode: '本地节点',
-    localNodeConfig: '本地节点配置',
     // Probe settings
     probeSettings: '探针设置',
     pingTargets: 'Ping 目标',

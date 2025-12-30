@@ -5,6 +5,12 @@
 import type { SiteSettings } from '../../types';
 import type { BackgroundType } from '../../context/ThemeContext';
 
+// Server label with color
+export interface ServerLabel {
+  name: string;
+  color: string; // red, orange, amber, yellow, lime, green, emerald, teal, cyan, sky, blue, indigo, violet, purple, fuchsia, pink, rose
+}
+
 // Remote server interface
 export interface RemoteServer {
   id: string;
@@ -28,6 +34,14 @@ export interface RemoteServer {
   remaining_value?: string;
   tip_badge?: string;
   notes?: string;
+  labels?: ServerLabel[];
+  // Sale/rent settings
+  sale_status?: '' | 'rent' | 'sell'; // Sale status: empty, rent, sell
+  sale_contact_url?: string; // Contact URL for rent/sell
+  // Traffic settings
+  traffic_limit_gb?: number; // Monthly traffic limit in GB (0 = unlimited)
+  traffic_threshold_type?: 'sum' | 'max' | 'up' | 'down'; // How traffic is calculated
+  traffic_reset_day?: number; // Day of month to reset (1-28)
 }
 
 // Ping target configuration

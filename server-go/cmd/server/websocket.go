@@ -126,7 +126,7 @@ func (s *AppState) sendInitialStateFresh(client *DashboardClient) {
 	}
 	s.AgentMetricsMu.RUnlock()
 
-	totalServers := 1 + len(config.Servers) // local + remote
+	totalServers := len(config.Servers)
 
 	// Helper function to write with lock
 	writeMessage := func(data []byte) error {
@@ -150,50 +150,6 @@ func (s *AppState) sendInitialStateFresh(client *DashboardClient) {
 
 	// Step 2: Stream servers one by one
 	index := 0
-
-	// Local node first (usually fastest)
-	localMetrics := CollectMetrics()
-	localNode := config.LocalNode
-	localName := "Dashboard Server"
-	if localNode.Name != "" {
-		localName = localNode.Name
-	}
-	provider := "Local"
-	if localNode.Provider != "" {
-		provider = localNode.Provider
-	}
-
-	localServer := StreamServerMessage{
-		Type:  "stream_server",
-		Index: index,
-		Total: totalServers,
-		Server: ServerMetricsUpdate{
-			ServerID:      "local",
-			ServerName:    localName,
-			Location:      localNode.Location,
-			Provider:      provider,
-			Tag:           localNode.Tag,
-			GroupID:       localNode.GroupID,
-			GroupValues:   localNode.GroupValues,
-			Version:       ServerVersion,
-			IP:            "",
-			Online:        true,
-			Metrics:       &localMetrics,
-			PriceAmount:   localNode.PriceAmount,
-			PricePeriod:   localNode.PricePeriod,
-			PriceCurrency: localNode.PriceCurrency,
-			PurchaseDate:  localNode.PurchaseDate,
-			ExpiryDate:    localNode.ExpiryDate,
-			AutoRenew:     localNode.AutoRenew,
-			TipBadge:      localNode.TipBadge,
-			Notes:         localNode.Notes,
-		},
-	}
-	localData, _ := json.Marshal(localServer)
-	if err := writeMessage(localData); err != nil {
-		return
-	}
-	index++
 
 	// Remote servers
 	for _, server := range config.Servers {
@@ -241,6 +197,8 @@ func (s *AppState) sendInitialStateFresh(client *DashboardClient) {
 				TipBadge:      server.TipBadge,
 				Notes:         server.Notes,
 				GeoIP:         server.GeoIP,
+				SaleStatus:    server.SaleStatus,
+				SaleContactURL: server.SaleContactURL,
 			},
 		}
 		serverData, _ := json.Marshal(serverMsg)
@@ -269,8 +227,7 @@ func (s *AppState) RefreshSnapshot() {
 	}
 	s.AgentMetricsMu.RUnlock()
 
-	localMetrics := CollectMetrics()
-	s.RefreshSnapshotWithData(config, agentMetrics, &localMetrics)
+	s.RefreshSnapshotWithData(config, agentMetrics)
 }
 
 // serverStateHash computes a simple hash for change detection
@@ -291,8 +248,8 @@ func serverStateHash(online bool, metrics *SystemMetrics) uint64 {
 }
 
 // RefreshSnapshotWithData rebuilds snapshot using pre-collected data (incremental update)
-func (s *AppState) RefreshSnapshotWithData(config *AppConfig, agentMetrics map[string]*AgentMetricsData, localMetrics *SystemMetrics) {
-	totalServers := 1 + len(config.Servers)
+func (s *AppState) RefreshSnapshotWithData(config *AppConfig, agentMetrics map[string]*AgentMetricsData) {
+	totalServers := len(config.Servers)
 
 	// Get existing snapshot for incremental update
 	s.SnapshotMu.RLock()
@@ -320,55 +277,9 @@ func (s *AppState) RefreshSnapshotWithData(config *AppConfig, agentMetrics map[s
 	}
 	snapshot.InitMessage, _ = json.Marshal(initMsg)
 
-	// Build local server message
-	localNode := config.LocalNode
-	localName := "Dashboard Server"
-	if localNode.Name != "" {
-		localName = localNode.Name
-	}
-	provider := "Local"
-	if localNode.Provider != "" {
-		provider = localNode.Provider
-	}
-
-	localHash := serverStateHash(true, localMetrics)
-	if canIncremental && oldSnapshot.ServerHashes["local"] == localHash {
-		// Reuse old serialized data
-		snapshot.ServerMessages[0] = oldSnapshot.ServerMessages[0]
-	} else {
-		localServer := StreamServerMessage{
-			Type:  "stream_server",
-			Index: 0,
-			Total: totalServers,
-			Server: ServerMetricsUpdate{
-				ServerID:      "local",
-				ServerName:    localName,
-				Location:      localNode.Location,
-				Provider:      provider,
-				Tag:           localNode.Tag,
-				GroupID:       localNode.GroupID,
-				GroupValues:   localNode.GroupValues,
-				Version:       ServerVersion,
-				IP:            "",
-				Online:        true,
-				Metrics:       localMetrics,
-				PriceAmount:   localNode.PriceAmount,
-				PricePeriod:   localNode.PricePeriod,
-				PriceCurrency: localNode.PriceCurrency,
-				PurchaseDate:  localNode.PurchaseDate,
-				ExpiryDate:    localNode.ExpiryDate,
-				AutoRenew:     localNode.AutoRenew,
-				TipBadge:      localNode.TipBadge,
-				Notes:         localNode.Notes,
-			},
-		}
-		snapshot.ServerMessages[0], _ = json.Marshal(localServer)
-	}
-	snapshot.ServerHashes["local"] = localHash
-
 	// Build remote server messages (incremental)
 	for i, server := range config.Servers {
-		index := i + 1
+		index := i
 		metricsData := agentMetrics[server.ID]
 		online := false
 		if metricsData != nil {
@@ -423,6 +334,8 @@ func (s *AppState) RefreshSnapshotWithData(config *AppConfig, agentMetrics map[s
 				TipBadge:      server.TipBadge,
 				Notes:         server.Notes,
 				GeoIP:         server.GeoIP,
+				SaleStatus:    server.SaleStatus,
+				SaleContactURL: server.SaleContactURL,
 			},
 		}
 		snapshot.ServerMessages[index], _ = json.Marshal(serverMsg)
@@ -542,6 +455,17 @@ func (s *AppState) HandleAgentWS(c *gin.Context) {
 							}
 							if len(s.Config.ProbeSettings.PingTargets) > 0 {
 								response["ping_targets"] = s.Config.ProbeSettings.PingTargets
+							}
+							
+							// Get traffic config for this server
+							if trafficManager != nil {
+								if stats := trafficManager.GetServerStats(agentMsg.ServerID); stats != nil {
+									response["traffic_config"] = map[string]interface{}{
+										"monthly_limit_gb": stats.MonthlyLimitGB,
+										"threshold_type":   stats.ThresholdType,
+										"reset_day":        stats.ResetDay,
+									}
+								}
 							}
 							
 							// Get last metrics time for resumable sync

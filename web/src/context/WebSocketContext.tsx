@@ -8,6 +8,12 @@ interface NetworkSpeed {
   tx_sec: number;
 }
 
+// Server label with color
+export interface ServerLabel {
+  name: string;
+  color: string;
+}
+
 export interface ServerConfig {
   id: string;
   name: string;
@@ -20,7 +26,7 @@ export interface ServerConfig {
   version?: string;
   price?: {
     amount: string;
-    period: 'month' | 'year';
+    period: 'month' | 'quarter' | 'year';
     currency?: string;
   };
   purchase_date?: string;
@@ -29,7 +35,10 @@ export interface ServerConfig {
   remaining_value?: string;
   tip_badge?: string;
   notes?: string;
+  labels?: ServerLabel[];
   geoip?: GeoIPData;
+  sale_status?: '' | 'rent' | 'sell';
+  sale_contact_url?: string;
 }
 
 export interface ServerState {
@@ -109,7 +118,10 @@ interface ServerMetricsUpdate {
   auto_renew?: boolean;
   tip_badge?: string;
   notes?: string;
+  labels?: ServerLabel[];
   geoip?: GeoIPData;
+  sale_status?: string;
+  sale_contact_url?: string;
 }
 
 // Context interface
@@ -328,7 +340,10 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
                     auto_renew: serverUpdate.auto_renew,
                     tip_badge: serverUpdate.tip_badge,
                     notes: serverUpdate.notes,
+                    labels: serverUpdate.labels,
                     geoip: serverUpdate.geoip,
+                    sale_status: (serverUpdate.sale_status as '' | 'rent' | 'sell') || '',
+                    sale_contact_url: serverUpdate.sale_contact_url,
                   },
                   metrics: metricsToUse,
                   speed: newSpeed,
@@ -467,7 +482,10 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
                   auto_renew: serverUpdate.auto_renew,
                   tip_badge: serverUpdate.tip_badge,
                   notes: serverUpdate.notes,
+                  labels: serverUpdate.labels,
                   geoip: serverUpdate.geoip,
+                  sale_status: (serverUpdate.sale_status as '' | 'rent' | 'sell') || '',
+                  sale_contact_url: serverUpdate.sale_contact_url,
                 },
                 metrics: metricsToUse,
                 speed: newSpeed,

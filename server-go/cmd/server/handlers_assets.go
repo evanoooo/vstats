@@ -100,7 +100,6 @@ func (s *AppState) GetCostStatistics(c *gin.Context) {
 	
 	s.ConfigMu.RLock()
 	servers := s.Config.Servers
-	localNode := s.Config.LocalNode
 	s.ConfigMu.RUnlock()
 	
 	now := time.Now()
@@ -152,45 +151,6 @@ func (s *AppState) GetCostStatistics(c *gin.Context) {
 		}
 		
 		serverCosts = append(serverCosts, *cost)
-	}
-	
-	// Process local node if it has pricing
-	if localNode.PriceAmount != "" {
-		localName := localNode.Name
-		if localName == "" {
-			localName = "Local Server"
-		}
-		cost := parseServerCost("local", localName, localNode.Provider, localNode.PriceAmount, localNode.PricePeriod, localNode.PriceCurrency, localNode.ExpiryDate, localNode.AutoRenew, now)
-		if cost != nil {
-			summary.ServerCount++
-			summary.TotalMonthly += cost.MonthlyNorm
-			
-			provider := localNode.Provider
-			if provider == "" {
-				provider = "Local"
-			}
-			summary.ByProvider[provider] += cost.MonthlyNorm
-			
-			currency := cost.PriceCurrency
-			if currency == "" {
-				currency = "USD"
-			}
-			summary.ByCurrency[currency] += cost.PriceAmount
-			
-			if cost.DaysLeft != nil {
-				if *cost.DaysLeft < 0 {
-					summary.ExpiredCount++
-				} else if *cost.DaysLeft <= 30 {
-					summary.ExpiringCount++
-				}
-			}
-			
-			if localNode.AutoRenew {
-				summary.AutoRenewCount++
-			}
-			
-			serverCosts = append(serverCosts, *cost)
-		}
 	}
 	
 	summary.TotalAnnual = summary.TotalMonthly * 12
@@ -530,7 +490,6 @@ func (s *AppState) GetExpiringServers(c *gin.Context) {
 	
 	s.ConfigMu.RLock()
 	servers := s.Config.Servers
-	localNode := s.Config.LocalNode
 	s.ConfigMu.RUnlock()
 	
 	now := time.Now()
@@ -558,28 +517,6 @@ func (s *AppState) GetExpiringServers(c *gin.Context) {
 				"price_amount":  server.PriceAmount,
 				"price_period":  server.PricePeriod,
 				"price_currency": server.PriceCurrency,
-			})
-		}
-	}
-	
-	// Check local node
-	if localNode.ExpiryDate != "" {
-		daysLeft := calculateDaysLeft(localNode.ExpiryDate, now)
-		if daysLeft != nil && (*daysLeft <= days || (includeExpired && *daysLeft < 0)) {
-			localName := localNode.Name
-			if localName == "" {
-				localName = "Local Server"
-			}
-			expiring = append(expiring, gin.H{
-				"id":            "local",
-				"name":          localName,
-				"provider":      localNode.Provider,
-				"expiry_date":   localNode.ExpiryDate,
-				"days_left":     *daysLeft,
-				"auto_renew":    localNode.AutoRenew,
-				"price_amount":  localNode.PriceAmount,
-				"price_period":  localNode.PricePeriod,
-				"price_currency": localNode.PriceCurrency,
 			})
 		}
 	}

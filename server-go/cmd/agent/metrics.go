@@ -115,6 +115,22 @@ func (mc *MetricsCollector) SetPingTargets(targets []PingTargetConfig) {
 	mc.customPingTargets = targets
 }
 
+// SetTrafficConfig updates the traffic configuration from server
+func (mc *MetricsCollector) SetTrafficConfig(config *TrafficConfig) {
+	if config == nil || mc.dailyTrafficStats == nil {
+		return
+	}
+	mc.dailyTrafficStats.SetTrafficConfig(config.MonthlyLimitGB, config.ThresholdType, config.ResetDay)
+}
+
+// GetBillingPeriodUsage returns current billing period traffic usage
+func (mc *MetricsCollector) GetBillingPeriodUsage() (usageGB float64, limitGB float64, usagePercent float64) {
+	if mc.dailyTrafficStats == nil {
+		return 0, 0, 0
+	}
+	return mc.dailyTrafficStats.GetBillingPeriodUsage()
+}
+
 // Collect collects all system metrics
 func (mc *MetricsCollector) Collect() SystemMetrics {
 	// CPU metrics

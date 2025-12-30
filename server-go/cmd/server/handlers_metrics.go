@@ -14,21 +14,12 @@ import (
 // Metrics Handlers
 // ============================================================================
 
-type LocalMetricsResponse struct {
-	SystemMetrics
-	LocalNode LocalNodeConfig `json:"local_node"`
-}
-
 func (s *AppState) GetMetrics(c *gin.Context) {
-	metrics := CollectMetrics()
-
-	s.ConfigMu.RLock()
-	localNode := s.Config.LocalNode
-	s.ConfigMu.RUnlock()
-
-	c.JSON(http.StatusOK, LocalMetricsResponse{
-		SystemMetrics: metrics,
-		LocalNode:     localNode,
+	// Local metrics collection has been removed.
+	// All metrics should be reported by agents.
+	c.JSON(http.StatusNotImplemented, gin.H{
+		"error":   "Local metrics collection is not available",
+		"message": "Please install an agent to report metrics",
 	})
 }
 
@@ -79,6 +70,8 @@ func (s *AppState) GetAllMetrics(c *gin.Context) {
 			TipBadge:      server.TipBadge,
 			Notes:         server.Notes,
 			GeoIP:         server.GeoIP,
+			SaleStatus:    server.SaleStatus,
+			SaleContactURL: server.SaleContactURL,
 		})
 	}
 

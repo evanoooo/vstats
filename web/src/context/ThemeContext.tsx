@@ -387,13 +387,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('vstats-token')}`,
+          'Authorization': `Bearer ${localStorage.getItem('vstats_token')}`,
         },
         body: JSON.stringify({ source, ref }),
       });
       
+      // Parse response data regardless of status
+      const data = await response.json().catch(() => ({}));
+      
       if (response.ok) {
-        const data = await response.json();
         if (data.success && data.theme) {
           const theme = serverToLocalInstalledTheme(data.theme);
           setInstalledThemes(prev => {
@@ -416,17 +418,33 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         return { success: false, error: data.error || 'Unknown error' };
       }
       
-      // If server fails (e.g., not authenticated), try client-side
-      const result = await installThemeFromSource({ source, ref });
-      if (result.success && result.theme) {
-        setInstalledThemes(prev => [...prev, result.theme!]);
+      // Server returned an error - return it directly instead of falling back to client-side
+      // Client-side fetching will fail due to CORS when fetching from GitHub
+      if (data.error) {
+        return { success: false, error: data.error };
       }
-      return result;
+      
+      // Only try client-side if server is completely unreachable (e.g., 401 without proper error message)
+      // But for authenticated users, we should rely on server-side fetching
+      if (response.status === 401) {
+        return { success: false, error: 'Please login to install themes' };
+      }
+      
+      return { success: false, error: `Server error: ${response.status} ${response.statusText}` };
     } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to install theme',
-      };
+      // Network error - try client-side as fallback (may fail due to CORS)
+      try {
+        const result = await installThemeFromSource({ source, ref });
+        if (result.success && result.theme) {
+          setInstalledThemes(prev => [...prev, result.theme!]);
+        }
+        return result;
+      } catch (clientError) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to install theme',
+        };
+      }
     }
   };
 
@@ -437,7 +455,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/themes/${targetThemeId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('vstats-token')}`,
+          'Authorization': `Bearer ${localStorage.getItem('vstats_token')}`,
         },
       });
       

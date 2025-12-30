@@ -170,6 +170,15 @@ func (wsc *WebSocketClient) connectAndRun(offlineMetricsCh chan<- *SystemMetrics
 		wsc.collector.SetPingTargets(response.PingTargets)
 	}
 
+	// Update traffic config from server if provided
+	if response.TrafficConfig != nil {
+		log.Printf("Received traffic config from server: limit=%.2fGB, type=%s, reset_day=%d",
+			response.TrafficConfig.MonthlyLimitGB,
+			response.TrafficConfig.ThresholdType,
+			response.TrafficConfig.ResetDay)
+		wsc.collector.SetTrafficConfig(response.TrafficConfig)
+	}
+
 	// Store last seen timestamp from server (for deduplication)
 	if response.LastSeen != nil {
 		log.Printf("Server last seen timestamp: %s", *response.LastSeen)
@@ -243,13 +252,22 @@ func (wsc *WebSocketClient) connectAndRun(offlineMetricsCh chan<- *SystemMetrics
 					wsc.handleUpdateCommand(response.DownloadURL, response.Force)
 				}
 			case "config":
-				// Handle runtime config update (e.g., ping targets)
+				// Handle runtime config update (e.g., ping targets, traffic config)
 				if len(response.PingTargets) > 0 {
 					log.Printf("Received updated ping targets from server: %d targets", len(response.PingTargets))
 					wsc.collector.SetPingTargets(response.PingTargets)
-				} else {
+				} else if response.TrafficConfig == nil {
+					// Only clear ping targets if this is a ping-only config update
 					log.Println("Received config update: clearing ping targets")
 					wsc.collector.SetPingTargets(nil)
+				}
+				// Handle traffic config update
+				if response.TrafficConfig != nil {
+					log.Printf("Received updated traffic config: limit=%.2fGB, type=%s, reset_day=%d",
+						response.TrafficConfig.MonthlyLimitGB,
+						response.TrafficConfig.ThresholdType,
+						response.TrafficConfig.ResetDay)
+					wsc.collector.SetTrafficConfig(response.TrafficConfig)
 				}
 			}
 		}
