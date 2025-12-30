@@ -225,6 +225,7 @@ func main() {
 	r.GET("/api/groups", state.GetGroups)
 	r.GET("/api/dimensions", state.GetDimensions) // Public: get all dimensions for grouping
 	r.GET("/api/settings/site", state.GetSiteSettings)
+	r.GET("/api/themes", state.GetInstalledThemes)   // Public: get installed themes for all users
 	r.GET("/api/themes/:id/css", state.GetThemeCSS) // Public: get theme CSS for loading
 	r.GET("/api/wallpaper/bing", GetBingWallpaper)
 	r.GET("/api/wallpaper/unsplash", GetUnsplashWallpaper)
@@ -320,8 +321,7 @@ func main() {
 		protected.GET("/api/geoip/lookup", state.LookupGeoIP)
 		protected.POST("/api/geoip/lookup/batch", state.LookupGeoIPBatch)
 		protected.POST("/api/geoip/refresh", state.RefreshServerGeoIP)
-		// Theme management
-		protected.GET("/api/themes", state.GetInstalledThemes)
+		// Theme management (GET /api/themes is public, see above)
 		protected.POST("/api/themes/install", state.InstallTheme)
 		protected.DELETE("/api/themes/:id", state.UninstallTheme)
 		protected.GET("/api/themes/:id/check-update", state.CheckThemeUpdate)

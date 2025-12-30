@@ -166,9 +166,21 @@ const saveCachedMetrics = (metricsMap: Map<string, SystemMetrics>) => {
     metricsMap.forEach((value, key) => {
       obj[key] = value;
     });
-    localStorage.setItem(METRICS_CACHE_KEY, JSON.stringify(obj));
+    const data = JSON.stringify(obj);
+    // Only cache if data is reasonably sized (< 1MB)
+    if (data.length < 1024 * 1024) {
+      localStorage.setItem(METRICS_CACHE_KEY, data);
+    }
   } catch (e) {
-    console.warn('Failed to save metrics cache', e);
+    // If quota exceeded, clear the cache and don't retry
+    if (e instanceof DOMException && e.name === 'QuotaExceededError') {
+      try {
+        localStorage.removeItem(METRICS_CACHE_KEY);
+      } catch {
+        // Ignore removal errors
+      }
+    }
+    // Don't log - this is a non-critical optimization
   }
 };
 
