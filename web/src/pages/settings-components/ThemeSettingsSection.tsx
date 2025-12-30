@@ -751,7 +751,7 @@ export function ThemeSettingsSection({
               </p>
             </div>
             <button
-              onClick={saveThemeSettings}
+              onClick={() => saveThemeSettings()}
               disabled={saving}
               className={`
                 px-6 py-2.5 rounded-lg text-white text-sm font-medium transition-all
